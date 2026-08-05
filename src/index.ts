@@ -134,7 +134,3 @@ export function compileSourceToExecutable(
   if (!fs.existsSync("dist")) fs.mkdirSync("dist", { recursive: true });
   fs.writeFileSync(outputFile, pe.TrimmedBuffer);
 }
-
-const sourceCode = `print("hello world")`;
-compileSourceToExecutable(sourceCode, "dist/output.exe");
-console.log('Compiled print("hello world") -> "dist/output.exe"');

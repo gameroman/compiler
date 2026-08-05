@@ -5,7 +5,7 @@
     "test": "bun test",
     "lint": "oxlint",
     "format": "oxfmt",
-    "build": "bun run ./src/index.ts",
+    "build": "bun run ./src/cli.ts examples/hello.txt dist/output.exe",
     "start": "./dist/output"
   },
   "devDependencies": {
