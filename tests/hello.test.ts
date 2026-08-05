@@ -52,4 +52,28 @@ describe("compileSourceToExecutable", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toBe("n=\r\n42\r\n");
   });
+
+  it("prints a string with lf eol", () => {
+    compileSourceToExecutable('print("hi")', outputFile, { eol: "lf" });
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("hi\n");
+  });
+
+  it("prints an integer with lf eol", () => {
+    compileSourceToExecutable("print(42)", outputFile, { eol: "lf" });
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("42\n");
+  });
+
+  it("prints with explicit crlf eol", () => {
+    compileSourceToExecutable('print("hi")', outputFile, { eol: "crlf" });
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("hi\r\n");
+  });
 });

@@ -22,6 +22,17 @@ const MEMORY_LAYOUT = {
 
 const SCRATCH_BUFFER_SIZE = 32;
 
+export type Eol = "crlf" | "lf";
+
+export interface CompileOptions {
+  eol?: Eol;
+}
+
+const EOL_STRING: Record<Eol, string> = {
+  crlf: "\r\n",
+  lf: "\n",
+};
+
 type PrintOp =
   | { kind: "string"; rva: number; length: number }
   | { kind: "integer"; node: IntegerLiteralNode };
@@ -29,7 +40,9 @@ type PrintOp =
 export function compileSourceToExecutable(
   sourceCode: string,
   outputFile: string,
+  options: CompileOptions = {},
 ) {
+  const eol = options.eol ?? "crlf";
   const tokens = tokenize(sourceCode);
   const ast = parse(tokens);
 
@@ -38,13 +51,15 @@ export function compileSourceToExecutable(
   );
 
   // Allocate a contiguous region in .rdata for each string literal's payload
-  // (value + "\r\n"), starting at STRING_PAYLOAD.
+  // (value + EOL), starting at STRING_PAYLOAD.
   const stringPayloads: { rva: number; bytes: Uint8Array }[] = [];
   const ops: PrintOp[] = [];
   let nextPayloadRva = MEMORY_LAYOUT.STRING_PAYLOAD;
   for (const statement of printStatements) {
     if (statement.argument.kind === "StringLiteral") {
-      const bytes = new TextEncoder().encode(statement.argument.value + "\r\n");
+      const bytes = new TextEncoder().encode(
+        statement.argument.value + EOL_STRING[eol],
+      );
       stringPayloads.push({ rva: nextPayloadRva, bytes });
       ops.push({ kind: "string", rva: nextPayloadRva, length: bytes.length });
       nextPayloadRva += bytes.length;
@@ -63,7 +78,7 @@ export function compileSourceToExecutable(
     if (op.kind === "string") {
       compileStringPrint(code, op.rva, op.length);
     } else {
-      compileIntegerPrint(code, op.node);
+      compileIntegerPrint(code, op.node, eol);
     }
   }
 
@@ -166,7 +181,11 @@ function compileStringPrint(
   code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_WRITE_FILE);
 }
 
-function compileIntegerPrint(code: CodeBuilder, node: IntegerLiteralNode) {
+function compileIntegerPrint(
+  code: CodeBuilder,
+  node: IntegerLiteralNode,
+  eol: Eol,
+) {
   // 1. GetStdHandle(-11) -> rbx
   code.movEcx32(-11);
   code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_GET_STD_HANDLE);
@@ -176,17 +195,23 @@ function compileIntegerPrint(code: CodeBuilder, node: IntegerLiteralNode) {
   code.movRaxImm32(node.value);
 
   // 3. Convert rax to decimal digits in the scratch buffer.
-  //    On exit: rdi = first digit, r8d = length (digits + "\r\n")
+  //    On exit: rdi = first digit, r8d = length (digits + EOL)
   code.leaRipRelative(
     Register.RDI,
     MEMORY_LAYOUT.TEXT_RVA,
     MEMORY_LAYOUT.SCRATCH_BUFFER + SCRATCH_BUFFER_SIZE,
   );
-  code.decRdi();
-  code.movByteRdiImm(0x0a);
-  code.decRdi();
-  code.movByteRdiImm(0x0d);
-  code.movR8d32(2);
+  if (eol === "lf") {
+    code.decRdi();
+    code.movByteRdiImm(0x0a);
+    code.movR8d32(1);
+  } else {
+    code.decRdi();
+    code.movByteRdiImm(0x0a);
+    code.decRdi();
+    code.movByteRdiImm(0x0d);
+    code.movR8d32(2);
+  }
   code.movEcx32(10);
 
   const loopStart = code.length;
