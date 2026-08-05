@@ -1,9 +1,8 @@
-/// <reference types="bun" />
-
 import * as fs from "node:fs";
 
 import { tokenize } from "./lexer";
 import { parse } from "./parser";
+import type { IntegerLiteralNode } from "./parser";
 import { PEBuilder } from "./pe-builder";
 import { CodeBuilder, Register } from "./x86-64";
 
@@ -21,6 +20,8 @@ const MEMORY_LAYOUT = {
   SCRATCH_BUFFER: 0x20f0,
 };
 
+const SCRATCH_BUFFER_SIZE = 32;
+
 export function compileSourceToExecutable(
   sourceCode: string,
   outputFile: string,
@@ -28,37 +29,26 @@ export function compileSourceToExecutable(
   const tokens = tokenize(sourceCode);
   const ast = parse(tokens);
 
-  let textToPrint = "";
-  for (const statement of ast) {
-    if (statement.kind === "PrintStatement") {
-      textToPrint = statement.textToPrint;
-    }
-  }
-
   const code = new CodeBuilder();
-  const textBytes = new TextEncoder().encode(textToPrint + "\r\n");
+  let textBytes = new Uint8Array(0);
+
+  const printStatements = ast.filter(
+    (statement) => statement.kind === "PrintStatement",
+  );
+  const lastStatement = printStatements[printStatements.length - 1];
 
   code.subRsp(56);
 
-  // 1. GetStdHandle(-11)
-  code.movEcx32(-11);
-  code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_GET_STD_HANDLE);
-
-  // 2. WriteFile(handle, buffer, length, &bytesWritten, NULL)
-  code.movRcxRax();
-  code.leaRipRelative(
-    Register.RDX,
-    MEMORY_LAYOUT.TEXT_RVA,
-    MEMORY_LAYOUT.STRING_PAYLOAD,
-  );
-  code.movR8d32(textBytes.length);
-  code.leaRipRelative(
-    Register.R9,
-    MEMORY_LAYOUT.TEXT_RVA,
-    MEMORY_LAYOUT.SCRATCH_BUFFER,
-  );
-  code.movStackParamZero();
-  code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_WRITE_FILE);
+  if (lastStatement) {
+    if (lastStatement.argument.kind === "StringLiteral") {
+      textBytes = new TextEncoder().encode(
+        lastStatement.argument.value + "\r\n",
+      );
+      compileStringPrint(code, textBytes.length);
+    } else {
+      compileIntegerPrint(code, lastStatement.argument);
+    }
+  }
 
   // 3. ExitProcess(0)
   code.xorEcxEcx();
@@ -133,4 +123,71 @@ export function compileSourceToExecutable(
 
   if (!fs.existsSync("dist")) fs.mkdirSync("dist", { recursive: true });
   fs.writeFileSync(outputFile, pe.TrimmedBuffer);
+}
+
+function compileStringPrint(code: CodeBuilder, length: number) {
+  // 1. GetStdHandle(-11)
+  code.movEcx32(-11);
+  code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_GET_STD_HANDLE);
+
+  // 2. WriteFile(handle, buffer, length, &bytesWritten, NULL)
+  code.movRcxRax();
+  code.leaRipRelative(
+    Register.RDX,
+    MEMORY_LAYOUT.TEXT_RVA,
+    MEMORY_LAYOUT.STRING_PAYLOAD,
+  );
+  code.movR8d32(length);
+  code.leaRipRelative(
+    Register.R9,
+    MEMORY_LAYOUT.TEXT_RVA,
+    MEMORY_LAYOUT.SCRATCH_BUFFER,
+  );
+  code.movStackParamZero();
+  code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_WRITE_FILE);
+}
+
+function compileIntegerPrint(code: CodeBuilder, node: IntegerLiteralNode) {
+  // 1. GetStdHandle(-11) -> rbx
+  code.movEcx32(-11);
+  code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_GET_STD_HANDLE);
+  code.movRbxRax();
+
+  // 2. Evaluate literal -> rax
+  code.movRaxImm32(node.value);
+
+  // 3. Convert rax to decimal digits in the scratch buffer.
+  //    On exit: rdi = first digit, r8d = length (digits + "\r\n")
+  code.leaRipRelative(
+    Register.RDI,
+    MEMORY_LAYOUT.TEXT_RVA,
+    MEMORY_LAYOUT.SCRATCH_BUFFER + SCRATCH_BUFFER_SIZE,
+  );
+  code.decRdi();
+  code.movByteRdiImm(0x0a);
+  code.decRdi();
+  code.movByteRdiImm(0x0d);
+  code.movR8d32(2);
+  code.movEcx32(10);
+
+  const loopStart = code.length;
+  code.xorEdxEdx();
+  code.divRcx();
+  code.addDlImm(0x30);
+  code.decRdi();
+  code.movByteRdiDl();
+  code.incR8d();
+  code.testRaxRax();
+  code.jnzBackwardTo(loopStart);
+
+  // 4. WriteFile(rbx, rdi, r8d, &bytesWritten, NULL)
+  code.movRcxRbx();
+  code.movRdxRdi();
+  code.leaRipRelative(
+    Register.R9,
+    MEMORY_LAYOUT.TEXT_RVA,
+    MEMORY_LAYOUT.SCRATCH_BUFFER,
+  );
+  code.movStackParamZero();
+  code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_WRITE_FILE);
 }

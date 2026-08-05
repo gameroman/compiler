@@ -5,6 +5,8 @@ export const Register = {
   R9: 9,
   RSP: 4,
   RAX: 0,
+  RBX: 3,
+  RDI: 7,
 } as const;
 
 export class CodeBuilder {
@@ -32,8 +34,66 @@ export class CodeBuilder {
     this.bytes.push(0x48, 0x89, 0xc1);
   }
 
+  movRbxRax() {
+    this.bytes.push(0x48, 0x89, 0xc3);
+  }
+
+  movRcxRbx() {
+    this.bytes.push(0x48, 0x89, 0xd9);
+  }
+
+  movRdxRdi() {
+    this.bytes.push(0x48, 0x89, 0xfa);
+  }
+
+  movRaxImm32(value: number) {
+    this.bytes.push(0x48, 0xc7, 0xc0);
+    this.push32(value);
+  }
+
+  xorEdxEdx() {
+    this.bytes.push(0x31, 0xd2);
+  }
+
+  divRcx() {
+    this.bytes.push(0x48, 0xf7, 0xf1);
+  }
+
+  addDlImm(value: number) {
+    this.bytes.push(0x80, 0xc2, value & 0xff);
+  }
+
+  decRdi() {
+    this.bytes.push(0x48, 0xff, 0xcf);
+  }
+
+  movByteRdiImm(value: number) {
+    this.bytes.push(0xc6, 0x07, value & 0xff);
+  }
+
+  movByteRdiDl() {
+    this.bytes.push(0x88, 0x17);
+  }
+
+  incR8d() {
+    this.bytes.push(0x41, 0xff, 0xc0);
+  }
+
+  testRaxRax() {
+    this.bytes.push(0x48, 0x85, 0xc0);
+  }
+
+  jnzBackwardTo(targetLength: number) {
+    const displacement = targetLength - (this.length + 2);
+    this.bytes.push(0x75, displacement & 0xff);
+  }
+
   xorEcxEcx() {
     this.bytes.push(0x31, 0xc9);
+  }
+
+  writeBytes(bytes: number[]) {
+    this.bytes.push(...bytes);
   }
 
   movStackParamZero() {
@@ -54,6 +114,8 @@ export class CodeBuilder {
       this.bytes.push(0x48, 0x8d, 0x15);
     } else if (reg === Register.R9) {
       this.bytes.push(0x4c, 0x8d, 0x0d);
+    } else if (reg === Register.RDI) {
+      this.bytes.push(0x48, 0x8d, 0x3d);
     }
     this.push32(displacement);
   }

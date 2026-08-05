@@ -1,5 +1,3 @@
-/// <reference types="bun" />
-
 import { afterAll, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -21,5 +19,13 @@ describe("compileSourceToExecutable", () => {
     const result = spawnSync(outputFile, [], { encoding: "utf8" });
     expect(result.status).toBe(0);
     expect(result.stdout).toBe("hello world\r\n");
+  });
+
+  it("produces a binary that prints an integer", () => {
+    compileSourceToExecutable("print(42)", outputFile);
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("42\r\n");
   });
 });

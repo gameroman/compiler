@@ -1,4 +1,10 @@
-export type TokenType = "PRINT" | "STRING" | "LPAREN" | "RPAREN" | "EOF";
+export type TokenType =
+  | "PRINT"
+  | "STRING"
+  | "INTEGER"
+  | "LPAREN"
+  | "RPAREN"
+  | "EOF";
 
 export interface Token {
   type: TokenType;
@@ -40,6 +46,19 @@ export function tokenize(source: string): Token[] {
       }
       i++; // Skip closing quote
       tokens.push({ type: "STRING", value });
+      continue;
+    }
+
+    // Match Integer Literals: 42
+    if (char !== undefined && /[0-9]/.test(char)) {
+      let value = "";
+      while (i < source.length) {
+        const next = source[i];
+        if (next === undefined || !/[0-9]/.test(next)) break;
+        value += next;
+        i++;
+      }
+      tokens.push({ type: "INTEGER", value });
       continue;
     }
 
