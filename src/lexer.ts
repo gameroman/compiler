@@ -1,0 +1,66 @@
+export type TokenType = "PRINT" | "STRING" | "LPAREN" | "RPAREN" | "EOF";
+
+export interface Token {
+  type: TokenType;
+  value: string;
+}
+
+export function tokenize(source: string): Token[] {
+  const tokens: Token[] = [];
+  let i = 0;
+
+  while (i < source.length) {
+    const char = source[i];
+
+    // Skip whitespace
+    if (/\s/.test(char)) {
+      i++;
+      continue;
+    }
+
+    // Match '(' and ')'
+    if (char === "(") {
+      tokens.push({ type: "LPAREN", value: "(" });
+      i++;
+      continue;
+    }
+    if (char === ")") {
+      tokens.push({ type: "RPAREN", value: ")" });
+      i++;
+      continue;
+    }
+
+    // Match String Literals: "hello world"
+    if (char === '"') {
+      let value = "";
+      i++; // Skip opening quote
+      while (i < source.length && source[i] !== '"') {
+        value += source[i];
+        i++;
+      }
+      i++; // Skip closing quote
+      tokens.push({ type: "STRING", value });
+      continue;
+    }
+
+    // Match Keywords / Identifiers: print
+    if (/[a-zA-Z_]/.test(char)) {
+      let ident = "";
+      while (i < source.length && /[a-zA-Z0-9_]/.test(source[i])) {
+        ident += source[i];
+        i++;
+      }
+      if (ident === "print") {
+        tokens.push({ type: "PRINT", value: "print" });
+      } else {
+        throw new Error(`Unknown identifier: ${ident}`);
+      }
+      continue;
+    }
+
+    throw new Error(`Unexpected character: ${char}`);
+  }
+
+  tokens.push({ type: "EOF", value: "" });
+  return tokens;
+}
