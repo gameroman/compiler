@@ -28,4 +28,28 @@ describe("compileSourceToExecutable", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toBe("42\r\n");
   });
+
+  it("prints multiple statements on separate lines", () => {
+    compileSourceToExecutable('print("hello")\nprint("world")', outputFile);
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("hello\r\nworld\r\n");
+  });
+
+  it("prints multiple statements separated by semicolons", () => {
+    compileSourceToExecutable('print("hello"); print("world")', outputFile);
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("hello\r\nworld\r\n");
+  });
+
+  it("mixes string and integer prints", () => {
+    compileSourceToExecutable('print("n="); print(42)', outputFile);
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("n=\r\n42\r\n");
+  });
 });

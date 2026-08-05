@@ -37,6 +37,11 @@ export function parse(tokens: Token[]): ASTNode[] {
   const ast: ASTNode[] = [];
 
   while (peek().type !== "EOF") {
+    if (peek().type === "SEMICOLON") {
+      consume("SEMICOLON");
+      continue;
+    }
+
     if (peek().type === "PRINT") {
       consume("PRINT");
       consume("LPAREN");

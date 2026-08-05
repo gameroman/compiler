@@ -4,6 +4,7 @@ export type TokenType =
   | "INTEGER"
   | "LPAREN"
   | "RPAREN"
+  | "SEMICOLON"
   | "EOF";
 
 export interface Token {
@@ -32,6 +33,11 @@ export function tokenize(source: string): Token[] {
     }
     if (char === ")") {
       tokens.push({ type: "RPAREN", value: ")" });
+      i++;
+      continue;
+    }
+    if (char === ";") {
+      tokens.push({ type: "SEMICOLON", value: ";" });
       i++;
       continue;
     }

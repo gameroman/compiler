@@ -22,6 +22,10 @@ const MEMORY_LAYOUT = {
 
 const SCRATCH_BUFFER_SIZE = 32;
 
+type PrintOp =
+  | { kind: "string"; rva: number; length: number }
+  | { kind: "integer"; node: IntegerLiteralNode };
+
 export function compileSourceToExecutable(
   sourceCode: string,
   outputFile: string,
@@ -29,28 +33,41 @@ export function compileSourceToExecutable(
   const tokens = tokenize(sourceCode);
   const ast = parse(tokens);
 
-  const code = new CodeBuilder();
-  let textBytes = new Uint8Array(0);
-
   const printStatements = ast.filter(
     (statement) => statement.kind === "PrintStatement",
   );
-  const lastStatement = printStatements[printStatements.length - 1];
 
+  // Allocate a contiguous region in .rdata for each string literal's payload
+  // (value + "\r\n"), starting at STRING_PAYLOAD.
+  const stringPayloads: { rva: number; bytes: Uint8Array }[] = [];
+  const ops: PrintOp[] = [];
+  let nextPayloadRva = MEMORY_LAYOUT.STRING_PAYLOAD;
+  for (const statement of printStatements) {
+    if (statement.argument.kind === "StringLiteral") {
+      const bytes = new TextEncoder().encode(statement.argument.value + "\r\n");
+      stringPayloads.push({ rva: nextPayloadRva, bytes });
+      ops.push({ kind: "string", rva: nextPayloadRva, length: bytes.length });
+      nextPayloadRva += bytes.length;
+    } else {
+      ops.push({ kind: "integer", node: statement.argument });
+    }
+  }
+  if (nextPayloadRva > MEMORY_LAYOUT.SCRATCH_BUFFER) {
+    throw new Error("String payloads exceed available .rdata space");
+  }
+
+  const code = new CodeBuilder();
   code.subRsp(56);
 
-  if (lastStatement) {
-    if (lastStatement.argument.kind === "StringLiteral") {
-      textBytes = new TextEncoder().encode(
-        lastStatement.argument.value + "\r\n",
-      );
-      compileStringPrint(code, textBytes.length);
+  for (const op of ops) {
+    if (op.kind === "string") {
+      compileStringPrint(code, op.rva, op.length);
     } else {
-      compileIntegerPrint(code, lastStatement.argument);
+      compileIntegerPrint(code, op.node);
     }
   }
 
-  // 3. ExitProcess(0)
+  // ExitProcess(0)
   code.xorEcxEcx();
   code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_EXIT_PROCESS);
 
@@ -115,9 +132,11 @@ export function compileSourceToExecutable(
   pe.seek(MEMORY_LAYOUT.RDATA_FILE_OFFSET + 0xa0);
   pe.writeString("kernel32.dll");
 
-  // String Payload @ RVA 0x20B0
+  // String Payloads @ RVA 0x20B0+
   pe.seek(MEMORY_LAYOUT.RDATA_FILE_OFFSET + 0xb0);
-  pe.writeBytes(textBytes);
+  for (const { bytes } of stringPayloads) {
+    pe.writeBytes(bytes);
+  }
 
   pe.padToAlignment(0x200);
 
@@ -125,18 +144,18 @@ export function compileSourceToExecutable(
   fs.writeFileSync(outputFile, pe.TrimmedBuffer);
 }
 
-function compileStringPrint(code: CodeBuilder, length: number) {
+function compileStringPrint(
+  code: CodeBuilder,
+  payloadRva: number,
+  length: number,
+) {
   // 1. GetStdHandle(-11)
   code.movEcx32(-11);
   code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_GET_STD_HANDLE);
 
   // 2. WriteFile(handle, buffer, length, &bytesWritten, NULL)
   code.movRcxRax();
-  code.leaRipRelative(
-    Register.RDX,
-    MEMORY_LAYOUT.TEXT_RVA,
-    MEMORY_LAYOUT.STRING_PAYLOAD,
-  );
+  code.leaRipRelative(Register.RDX, MEMORY_LAYOUT.TEXT_RVA, payloadRva);
   code.movR8d32(length);
   code.leaRipRelative(
     Register.R9,
