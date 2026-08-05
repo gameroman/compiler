@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 
 import { tokenize } from "./lexer";
 import { parse } from "./parser";
-import type { IntegerLiteralNode } from "./parser";
+import type { IntegerExprNode } from "./parser";
 import { PEBuilder } from "./pe-builder";
 import { CodeBuilder, Register } from "./x86-64";
 
@@ -35,7 +35,7 @@ const EOL_STRING: Record<Eol, string> = {
 
 type PrintOp =
   | { kind: "string"; rva: number; length: number }
-  | { kind: "integer"; node: IntegerLiteralNode };
+  | { kind: "integer"; node: IntegerExprNode };
 
 export function compileSourceToExecutable(
   sourceCode: string,
@@ -183,7 +183,7 @@ function compileStringPrint(
 
 function compileIntegerPrint(
   code: CodeBuilder,
-  node: IntegerLiteralNode,
+  node: IntegerExprNode,
   eol: Eol,
 ) {
   // 1. GetStdHandle(-11) -> rbx
@@ -191,8 +191,8 @@ function compileIntegerPrint(
   code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_GET_STD_HANDLE);
   code.movRbxRax();
 
-  // 2. Evaluate literal -> rax
-  code.movRaxImm32(node.value);
+  // 2. Evaluate expression -> rax
+  compileIntegerExpression(code, node);
 
   // 3. Convert rax to decimal digits in the scratch buffer.
   //    On exit: rdi = first digit, r8d = length (digits + EOL)
@@ -234,4 +234,21 @@ function compileIntegerPrint(
   );
   code.movStackParamZero();
   code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_WRITE_FILE);
+}
+
+function compileIntegerExpression(code: CodeBuilder, node: IntegerExprNode) {
+  if (node.kind === "IntegerLiteral") {
+    code.movRaxImm32(node.value);
+    return;
+  }
+
+  compileIntegerExpression(code, node.left);
+  if (node.right.kind === "IntegerLiteral") {
+    code.addRaxImm32(node.right.value);
+  } else {
+    code.pushRax();
+    compileIntegerExpression(code, node.right);
+    code.popRdx();
+    code.addRaxRdx();
+  }
 }

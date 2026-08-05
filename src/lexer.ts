@@ -2,6 +2,7 @@ export type TokenType =
   | "PRINT"
   | "STRING"
   | "INTEGER"
+  | "PLUS"
   | "LPAREN"
   | "RPAREN"
   | "SEMICOLON"
@@ -38,6 +39,11 @@ export function tokenize(source: string): Token[] {
     }
     if (char === ";") {
       tokens.push({ type: "SEMICOLON", value: ";" });
+      i++;
+      continue;
+    }
+    if (char === "+") {
+      tokens.push({ type: "PLUS", value: "+" });
       i++;
       continue;
     }

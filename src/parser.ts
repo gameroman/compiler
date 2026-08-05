@@ -10,7 +10,16 @@ export interface IntegerLiteralNode {
   value: number;
 }
 
-export type ExpressionNode = StringLiteralNode | IntegerLiteralNode;
+export type IntegerExprNode = IntegerLiteralNode | BinaryExprNode;
+
+export interface BinaryExprNode {
+  kind: "BinaryExpr";
+  operator: "+";
+  left: IntegerExprNode;
+  right: IntegerExprNode;
+}
+
+export type ExpressionNode = StringLiteralNode | IntegerExprNode;
 
 export interface PrintStatementNode {
   kind: "PrintStatement";
@@ -19,48 +28,67 @@ export interface PrintStatementNode {
 
 export type ASTNode = PrintStatementNode;
 
+interface ParserState {
+  tokens: Token[];
+  current: number;
+}
+
 export function parse(tokens: Token[]): ASTNode[] {
-  let current = 0;
-
-  function peek(): Token {
-    return tokens[current];
-  }
-  function consume(expectedType: TokenType): Token {
-    const token = tokens[current];
-    if (token.type !== expectedType) {
-      throw new Error(`Expected token ${expectedType}, got ${token.type}`);
-    }
-    current++;
-    return token;
-  }
-
+  const state: ParserState = { tokens, current: 0 };
   const ast: ASTNode[] = [];
 
-  while (peek().type !== "EOF") {
-    if (peek().type === "SEMICOLON") {
-      consume("SEMICOLON");
+  while (peek(state).type !== "EOF") {
+    if (peek(state).type === "SEMICOLON") {
+      consume(state, "SEMICOLON");
       continue;
     }
 
-    if (peek().type === "PRINT") {
-      consume("PRINT");
-      consume("LPAREN");
+    if (peek(state).type === "PRINT") {
+      consume(state, "PRINT");
+      consume(state, "LPAREN");
 
       let argument: ExpressionNode;
-      if (peek().type === "STRING") {
-        const strToken = consume("STRING");
+      if (peek(state).type === "STRING") {
+        const strToken = consume(state, "STRING");
         argument = { kind: "StringLiteral", value: strToken.value };
       } else {
-        const intToken = consume("INTEGER");
-        argument = { kind: "IntegerLiteral", value: Number(intToken.value) };
+        argument = parseAdditiveExpression(state);
       }
 
-      consume("RPAREN");
+      consume(state, "RPAREN");
       ast.push({ kind: "PrintStatement", argument });
     } else {
-      throw new Error(`Unexpected token at root level: ${peek().type}`);
+      throw new Error(`Unexpected token at root level: ${peek(state).type}`);
     }
   }
 
   return ast;
+}
+
+function peek(state: ParserState): Token {
+  return state.tokens[state.current];
+}
+
+function consume(state: ParserState, expectedType: TokenType): Token {
+  const token = state.tokens[state.current];
+  if (token.type !== expectedType) {
+    throw new Error(`Expected token ${expectedType}, got ${token.type}`);
+  }
+  state.current++;
+  return token;
+}
+
+function parseTerm(state: ParserState): IntegerLiteralNode {
+  const token = consume(state, "INTEGER");
+  return { kind: "IntegerLiteral", value: Number(token.value) };
+}
+
+function parseAdditiveExpression(state: ParserState): IntegerExprNode {
+  let left: IntegerExprNode = parseTerm(state);
+  while (peek(state).type === "PLUS") {
+    consume(state, "PLUS");
+    const right = parseTerm(state);
+    left = { kind: "BinaryExpr", operator: "+", left, right };
+  }
+  return left;
 }

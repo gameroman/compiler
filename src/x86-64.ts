@@ -51,6 +51,23 @@ export class CodeBuilder {
     this.push32(value);
   }
 
+  addRaxImm32(value: number) {
+    this.bytes.push(0x48, 0x05);
+    this.push32(value);
+  }
+
+  pushRax() {
+    this.bytes.push(0x50);
+  }
+
+  popRdx() {
+    this.bytes.push(0x5a);
+  }
+
+  addRaxRdx() {
+    this.bytes.push(0x48, 0x01, 0xd0);
+  }
+
   xorEdxEdx() {
     this.bytes.push(0x31, 0xd2);
   }
