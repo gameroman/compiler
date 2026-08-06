@@ -681,6 +681,90 @@ describe("compileSourceToExecutable", () => {
     );
   });
 
+  it("prints a parenthesized integer constant", () => {
+    const outputFile = compileSource("X = (2); print(X)");
+
+    runAndExpect(outputFile, "2\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"776b62395eca59e2e86482b25df16bd58ca279b4cbdf824e71ca49d6f7c0593c"`,
+    );
+  });
+
+  it("folds a parenthesized integer constant to the same binary as its literal", () => {
+    const folded = compileSource("X = (2); print(X)");
+    const literal = compileSource("print(2)");
+
+    runAndExpect(folded, "2\r\n");
+    runAndExpect(literal, "2\r\n");
+
+    expectSameBinary(folded, literal);
+  });
+
+  it("prints a parenthesized boolean constant", () => {
+    const outputFile = compileSource("X = (true); print(X)");
+
+    runAndExpect(outputFile, "true\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"72b2a8ffef50f0534c45bc0df5a2d7a19625841c11f012433e8f99de6d5542f7"`,
+    );
+  });
+
+  it("folds a parenthesized boolean constant to the same binary as its literal", () => {
+    const folded = compileSource("X = (true); print(X)");
+    const literal = compileSource("print(true)");
+
+    runAndExpect(folded, "true\r\n");
+    runAndExpect(literal, "true\r\n");
+
+    expectSameBinary(folded, literal);
+  });
+
+  it("prints a parenthesized string constant", () => {
+    const outputFile = compileSource('X = ("hi"); print(X)');
+
+    runAndExpect(outputFile, "hi\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"f6fa5e623c0cdd84569cc6fc50bc168f431b515dff32da69a85f580d32d20149"`,
+    );
+  });
+
+  it("folds a parenthesized string constant to the same binary as its literal", () => {
+    const folded = compileSource('X = ("hi"); print(X)');
+    const literal = compileSource('print("hi")');
+
+    runAndExpect(folded, "hi\r\n");
+    runAndExpect(literal, "hi\r\n");
+
+    expectSameBinary(folded, literal);
+  });
+
+  it("rejects an arithmetic statement using a boolean constant", () => {
+    expect(() => compileSource("X = true + 1; print(X)")).toThrow(
+      CompilerError,
+    );
+  });
+
+  it("rejects an arithmetic statement using a string constant", () => {
+    expect(() => compileSource('X = "hi" + 1; print(X)')).toThrow(
+      CompilerError,
+    );
+  });
+
+  it("rejects a parenthesized boolean in an integer expression", () => {
+    expect(() => compileSource("X = (true) + 1; print(X)")).toThrow(
+      CompilerError,
+    );
+  });
+
   it("prints a constant declared inside a block", () => {
     const outputFile = compileSource("{ X = 5; print(X) }");
 

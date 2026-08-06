@@ -76,7 +76,7 @@ export interface ExpressionStatementNode {
 export interface ConstDeclNode {
   kind: "ConstDecl";
   name: string;
-  value: StringLiteralNode | IntegerExprNode | BooleanLiteralNode;
+  value: ExpressionNode;
 }
 
 export interface BlockStatementNode {
@@ -129,7 +129,7 @@ function parseStatement(state: ParserState): ASTNode {
   if (peek(state).type === "IDENT" && peekNext(state)?.type === "EQUAL") {
     const nameToken = consume(state, "IDENT");
     consume(state, "EQUAL");
-    const value = parseConstValue(state);
+    const value = parseExpression(state);
     return { kind: "ConstDecl", name: nameToken.value, value };
   }
   return {
@@ -150,48 +150,6 @@ function peekNext(state: ParserState): Token | undefined {
 }
 
 function parseExpression(state: ParserState): ExpressionNode {
-  if (peek(state).type === "STRING") {
-    const strToken = consume(state, "STRING");
-    return { kind: "StringLiteral", value: strToken.value };
-  }
-  if (peek(state).type === "TRUE") {
-    consume(state, "TRUE");
-    return { kind: "BooleanLiteral", value: true };
-  }
-  if (peek(state).type === "FALSE") {
-    consume(state, "FALSE");
-    return { kind: "BooleanLiteral", value: false };
-  }
-  if (peek(state).type === "LPAREN") {
-    consume(state, "LPAREN");
-    const inner = parseExpression(state);
-    consume(state, "RPAREN");
-    if (inner.kind === "StringLiteral" || inner.kind === "BooleanLiteral") {
-      return inner;
-    }
-    return parseAdditiveContinuation(
-      state,
-      parseMultiplicativeContinuation(state, inner),
-    );
-  }
-  return parseAdditiveExpression(state);
-}
-
-function parseConstValue(
-  state: ParserState,
-): StringLiteralNode | IntegerExprNode | BooleanLiteralNode {
-  if (peek(state).type === "STRING") {
-    const strToken = consume(state, "STRING");
-    return { kind: "StringLiteral", value: strToken.value };
-  }
-  if (peek(state).type === "TRUE") {
-    consume(state, "TRUE");
-    return { kind: "BooleanLiteral", value: true };
-  }
-  if (peek(state).type === "FALSE") {
-    consume(state, "FALSE");
-    return { kind: "BooleanLiteral", value: false };
-  }
   return parseAdditiveExpression(state);
 }
 
@@ -217,12 +175,24 @@ function consume(state: ParserState, expectedType: TokenType): Token {
   return token;
 }
 
-function parsePrimary(state: ParserState): IntegerExprNode {
+function parsePrimary(state: ParserState): ExpressionNode {
   if (peek(state).type === "LPAREN") {
     consume(state, "LPAREN");
-    const inner = parseAdditiveExpression(state);
+    const inner = parseExpression(state);
     consume(state, "RPAREN");
     return inner;
+  }
+  if (peek(state).type === "STRING") {
+    const strToken = consume(state, "STRING");
+    return { kind: "StringLiteral", value: strToken.value };
+  }
+  if (peek(state).type === "TRUE") {
+    consume(state, "TRUE");
+    return { kind: "BooleanLiteral", value: true };
+  }
+  if (peek(state).type === "FALSE") {
+    consume(state, "FALSE");
+    return { kind: "BooleanLiteral", value: false };
   }
   if (peek(state).type === "IDENT") {
     const token = consume(state, "IDENT");
@@ -232,50 +202,72 @@ function parsePrimary(state: ParserState): IntegerExprNode {
   return { kind: "IntegerLiteral", value: Number(token.value) };
 }
 
-function parseUnary(state: ParserState): IntegerExprNode {
+function requireInteger(node: ExpressionNode): IntegerExprNode {
+  if (node.kind === "StringLiteral") {
+    throw new CompilerError("A string cannot be used in an integer expression");
+  }
+  if (node.kind === "BooleanLiteral") {
+    throw new CompilerError(
+      "A boolean cannot be used in an integer expression",
+    );
+  }
+  return node;
+}
+
+function parseUnary(state: ParserState): ExpressionNode {
   const tokenType = peek(state).type;
   if (tokenType === "MINUS" || tokenType === "PLUS") {
     consume(state, tokenType);
     return {
       kind: "UnaryExpr",
       operator: tokenType === "MINUS" ? "-" : "+",
-      operand: parseUnary(state),
+      operand: requireInteger(parseUnary(state)),
     };
   }
   return parsePrimary(state);
 }
 
-function parseMultiplicativeExpression(state: ParserState): IntegerExprNode {
+function parseMultiplicativeExpression(state: ParserState): ExpressionNode {
   return parseMultiplicativeContinuation(state, parseUnary(state));
 }
 
 function parseMultiplicativeContinuation(
   state: ParserState,
-  left: IntegerExprNode,
-): IntegerExprNode {
+  left: ExpressionNode,
+): ExpressionNode {
   let result = left;
   while (peek(state).type === "MUL") {
     consume(state, "MUL");
-    const right = parseUnary(state);
-    result = { kind: "BinaryExpr", operator: "*", left: result, right };
+    const right = requireInteger(parseUnary(state));
+    result = {
+      kind: "BinaryExpr",
+      operator: "*",
+      left: requireInteger(result),
+      right,
+    };
   }
   return result;
 }
 
-function parseAdditiveExpression(state: ParserState): IntegerExprNode {
+function parseAdditiveExpression(state: ParserState): ExpressionNode {
   return parseAdditiveContinuation(state, parseMultiplicativeExpression(state));
 }
 
 function parseAdditiveContinuation(
   state: ParserState,
-  left: IntegerExprNode,
-): IntegerExprNode {
+  left: ExpressionNode,
+): ExpressionNode {
   let result = left;
   while (peek(state).type === "PLUS" || peek(state).type === "MINUS") {
     const operator = peek(state).type === "PLUS" ? "+" : "-";
     consume(state, peek(state).type);
-    const right = parseMultiplicativeExpression(state);
-    result = { kind: "BinaryExpr", operator, left: result, right };
+    const right = requireInteger(parseMultiplicativeExpression(state));
+    result = {
+      kind: "BinaryExpr",
+      operator,
+      left: requireInteger(result),
+      right,
+    };
   }
   return result;
 }
