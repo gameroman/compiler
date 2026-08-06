@@ -1,10 +1,9 @@
 import { afterAll, describe, expect, it } from "bun:test";
 
-import { CompilerError } from "#src/errors";
-
 import {
   cleanupCreatedFiles,
   compileSource,
+  expectCompileError,
   expectCompilesTo,
   fingerprint,
   runAndExpect,
@@ -82,26 +81,26 @@ describe("compileSourceToExecutable", () => {
   });
 
   it("rejects redefining a visible constant inside a block", () => {
-    expect(() => compileSource("X = 1; { X = 2 }")).toThrow(CompilerError);
+    expectCompileError("X = 1; { X = 2 }");
   });
 
   it("rejects shadowing in nested blocks", () => {
-    expect(() => compileSource("{ X = 1; { X = 2 } }")).toThrow(CompilerError);
+    expectCompileError("{ X = 1; { X = 2 } }");
   });
 
   it("rejects using a block-scoped constant outside its block", () => {
-    expect(() => compileSource("{ X = 2 } print(X)")).toThrow(CompilerError);
+    expectCompileError("{ X = 2 } print(X)");
   });
 
   it("rejects a reference to an undeclared identifier inside a block", () => {
-    expect(() => compileSource("{ print(X) }")).toThrow(CompilerError);
+    expectCompileError("{ print(X) }");
   });
 
   it("rejects an unclosed block", () => {
-    expect(() => compileSource("{ X = 1")).toThrow(CompilerError);
+    expectCompileError("{ X = 1");
   });
 
   it("rejects a stray closing brace", () => {
-    expect(() => compileSource("}")).toThrow(CompilerError);
+    expectCompileError("}");
   });
 });

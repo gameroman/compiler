@@ -1,10 +1,9 @@
 import { afterAll, describe, expect, it } from "bun:test";
 
-import { CompilerError } from "#src/errors";
-
 import {
   cleanupCreatedFiles,
   compileSource,
+  expectCompileError,
   expectCompilesTo,
   fingerprint,
   runAndExpect,
@@ -170,44 +169,34 @@ describe("compileSourceToExecutable", () => {
   });
 
   it("rejects an integer literal as an if condition", () => {
-    expect(() => compileSource('if (1) { print("a") }')).toThrow(CompilerError);
+    expectCompileError('if (1) { print("a") }');
   });
 
   it("rejects a string literal as an if condition", () => {
-    expect(() => compileSource('if ("a") { print("a") }')).toThrow(
-      CompilerError,
-    );
+    expectCompileError('if ("a") { print("a") }');
   });
 
   it("rejects an integer expression as an if condition", () => {
-    expect(() => compileSource('if (1 + 1) { print("a") }')).toThrow(
-      CompilerError,
-    );
+    expectCompileError('if (1 + 1) { print("a") }');
   });
 
   it("rejects a number constant as an if condition", () => {
-    expect(() => compileSource('X = 5; if (X) { print("a") }')).toThrow(
-      CompilerError,
-    );
+    expectCompileError('X = 5; if (X) { print("a") }');
   });
 
   it("rejects an undeclared identifier as an if condition", () => {
-    expect(() => compileSource('if (X) { print("a") }')).toThrow(CompilerError);
+    expectCompileError('if (X) { print("a") }');
   });
 
   it("rejects an if statement without braces", () => {
-    expect(() => compileSource('if (true) print("a")')).toThrow(CompilerError);
+    expectCompileError('if (true) print("a")');
   });
 
   it("rejects an if statement without parentheses", () => {
-    expect(() => compileSource('if true { print("a") }')).toThrow(
-      CompilerError,
-    );
+    expectCompileError('if true { print("a") }');
   });
 
   it("rejects an else without a preceding if body", () => {
-    expect(() => compileSource('if (true) else { print("a") }')).toThrow(
-      CompilerError,
-    );
+    expectCompileError('if (true) else { print("a") }');
   });
 });

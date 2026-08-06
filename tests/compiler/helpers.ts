@@ -7,6 +7,7 @@ import * as path from "node:path";
 
 import { compileSourceToBytes, compileSourceToExecutable } from "#src";
 import type { CompileOptions } from "#src";
+import { CompilerError } from "#src/errors";
 
 const createdFiles: string[] = [];
 
@@ -42,6 +43,10 @@ export function expectCompilesTo(
   expect(compileSourceToBytes(source, options)).toEqual(
     referenceBinary(referenceSource, options),
   );
+}
+
+export function expectCompileError(source: string, options?: CompileOptions) {
+  expect(() => compileSourceToBytes(source, options)).toThrow(CompilerError);
 }
 
 export function cleanupCreatedFiles() {

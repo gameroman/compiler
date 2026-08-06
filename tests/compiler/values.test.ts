@@ -1,10 +1,9 @@
 import { afterAll, describe, expect, it } from "bun:test";
 
-import { CompilerError } from "#src/errors";
-
 import {
   cleanupCreatedFiles,
   compileSource,
+  expectCompileError,
   expectCompilesTo,
   fingerprint,
   runAndExpect,
@@ -74,9 +73,7 @@ describe("compileSourceToExecutable", () => {
   });
 
   it("rejects using a boolean constant in an integer expression", () => {
-    expect(() => compileSource("FLAG = true; print(FLAG + 1)")).toThrow(
-      CompilerError,
-    );
+    expectCompileError("FLAG = true; print(FLAG + 1)");
   });
 
   it("lets a boolean constant reference an earlier boolean constant", () => {
@@ -84,13 +81,11 @@ describe("compileSourceToExecutable", () => {
   });
 
   it("rejects using a boolean constant in an integer expression", () => {
-    expect(() =>
-      compileSource("FLAG = true; OTHER = FLAG + 1; print(OTHER)"),
-    ).toThrow(CompilerError);
+    expectCompileError("FLAG = true; OTHER = FLAG + 1; print(OTHER)");
   });
 
   it("rejects an integer expression in a boolean print", () => {
-    expect(() => compileSource("print(true + 1)")).toThrow(CompilerError);
+    expectCompileError("print(true + 1)");
   });
 
   it("prints a string constant", () => {
@@ -118,15 +113,11 @@ describe("compileSourceToExecutable", () => {
   });
 
   it("rejects using a string constant in an integer expression", () => {
-    expect(() => compileSource('s = "hi"; print(s + 1)')).toThrow(
-      CompilerError,
-    );
+    expectCompileError('s = "hi"; print(s + 1)');
   });
 
   it("rejects using a string constant in an integer constant", () => {
-    expect(() => compileSource('s = "hi"; t = s + 1; print(t)')).toThrow(
-      CompilerError,
-    );
+    expectCompileError('s = "hi"; t = s + 1; print(t)');
   });
 
   it("prints a parenthesized integer constant", () => {
@@ -162,20 +153,14 @@ describe("compileSourceToExecutable", () => {
   });
 
   it("rejects an arithmetic statement using a boolean constant", () => {
-    expect(() => compileSource("X = true + 1; print(X)")).toThrow(
-      CompilerError,
-    );
+    expectCompileError("X = true + 1; print(X)");
   });
 
   it("rejects an arithmetic statement using a string constant", () => {
-    expect(() => compileSource('X = "hi" + 1; print(X)')).toThrow(
-      CompilerError,
-    );
+    expectCompileError('X = "hi" + 1; print(X)');
   });
 
   it("rejects a parenthesized boolean in an integer expression", () => {
-    expect(() => compileSource("X = (true) + 1; print(X)")).toThrow(
-      CompilerError,
-    );
+    expectCompileError("X = (true) + 1; print(X)");
   });
 });

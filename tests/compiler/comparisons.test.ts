@@ -1,10 +1,9 @@
 import { afterAll, describe, expect, it } from "bun:test";
 
-import { CompilerError } from "#src/errors";
-
 import {
   cleanupCreatedFiles,
   compileSource,
+  expectCompileError,
   expectCompilesTo,
   fingerprint,
   runAndExpect,
@@ -82,29 +81,27 @@ describe("compileSourceToExecutable", () => {
   });
 
   it("rejects comparing different types with equality", () => {
-    expect(() => compileSource("print(1 == true)")).toThrow(CompilerError);
+    expectCompileError("print(1 == true)");
   });
 
   it("rejects comparing a boolean with a string", () => {
-    expect(() => compileSource('print(true == "a")')).toThrow(CompilerError);
+    expectCompileError('print(true == "a")');
   });
 
   it("rejects comparing a number constant with a string literal", () => {
-    expect(() => compileSource('X = 5; print(X == "5")')).toThrow(
-      CompilerError,
-    );
+    expectCompileError('X = 5; print(X == "5")');
   });
 
   it("rejects chained comparisons", () => {
-    expect(() => compileSource("print(1 == 1 == 1)")).toThrow(CompilerError);
+    expectCompileError("print(1 == 1 == 1)");
   });
 
   it("rejects using a comparison in an integer expression", () => {
-    expect(() => compileSource("print(1 + (1 == 1))")).toThrow(CompilerError);
+    expectCompileError("print(1 + (1 == 1))");
   });
 
   it("rejects comparing an undeclared identifier", () => {
-    expect(() => compileSource("print(X == 1)")).toThrow(CompilerError);
+    expectCompileError("print(X == 1)");
   });
 
   it("prints the negation of true", () => {
@@ -164,30 +161,30 @@ describe("compileSourceToExecutable", () => {
   });
 
   it("rejects negating an integer literal", () => {
-    expect(() => compileSource("print(!1)")).toThrow(CompilerError);
+    expectCompileError("print(!1)");
   });
 
   it("rejects negating a string literal", () => {
-    expect(() => compileSource('print(!"a")')).toThrow(CompilerError);
+    expectCompileError('print(!"a")');
   });
 
   it("rejects negating an integer expression", () => {
-    expect(() => compileSource("print(!(1 + 1))")).toThrow(CompilerError);
+    expectCompileError("print(!(1 + 1))");
   });
 
   it("rejects using a negation in an integer expression", () => {
-    expect(() => compileSource("print(!true + 1)")).toThrow(CompilerError);
+    expectCompileError("print(!true + 1)");
   });
 
   it("rejects negating an integer constant", () => {
-    expect(() => compileSource("X = 5; print(!X)")).toThrow(CompilerError);
+    expectCompileError("X = 5; print(!X)");
   });
 
   it("rejects negating a string constant", () => {
-    expect(() => compileSource('s = "a"; print(!s)')).toThrow(CompilerError);
+    expectCompileError('s = "a"; print(!s)');
   });
 
   it("rejects negating an undeclared identifier", () => {
-    expect(() => compileSource("print(!X)")).toThrow(CompilerError);
+    expectCompileError("print(!X)");
   });
 });
