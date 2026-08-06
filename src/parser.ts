@@ -40,10 +40,18 @@ interface UnaryExprNode {
   operand: IntegerExprNode;
 }
 
+interface ComparisonExprNode {
+  kind: "ComparisonExpr";
+  operator: "==" | "!=";
+  left: ExpressionNode;
+  right: ExpressionNode;
+}
+
 export type ExpressionNode =
   | StringLiteralNode
   | IntegerExprNode
-  | BooleanLiteralNode;
+  | BooleanLiteralNode
+  | ComparisonExprNode;
 
 interface PrintStatementNode {
   kind: "PrintStatement";
@@ -132,7 +140,26 @@ function peekNext(state: ParserState): Token | undefined {
 }
 
 function parseExpression(state: ParserState): ExpressionNode {
-  return parseAdditiveExpression(state);
+  return parseComparison(state);
+}
+
+function parseComparison(state: ParserState): ExpressionNode {
+  const left = parseAdditiveExpression(state);
+  const tokenType = peek(state).type;
+  if (tokenType !== "EQEQ" && tokenType !== "NOTEQ") {
+    return left;
+  }
+  consume(state, tokenType);
+  const right = parseAdditiveExpression(state);
+  if (peek(state).type === "EQEQ" || peek(state).type === "NOTEQ") {
+    throw new CompilerError("Comparison operators cannot be chained");
+  }
+  return {
+    kind: "ComparisonExpr",
+    operator: tokenType === "EQEQ" ? "==" : "!=",
+    left,
+    right,
+  };
 }
 
 function peek(state: ParserState): Token {
@@ -191,6 +218,11 @@ function requireInteger(node: ExpressionNode): IntegerExprNode {
   if (node.kind === "BooleanLiteral") {
     throw new CompilerError(
       "A boolean cannot be used in an integer expression",
+    );
+  }
+  if (node.kind === "ComparisonExpr") {
+    throw new CompilerError(
+      "A comparison cannot be used in an integer expression",
     );
   }
   return node;

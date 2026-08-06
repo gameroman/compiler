@@ -107,6 +107,19 @@ export function compileSourceToExecutable(
         return { kind: "StringLiteral", value };
       }
     }
+    if (argument.kind === "ComparisonExpr") {
+      const left = resolveConstValue(argument.left);
+      const right = resolveConstValue(argument.right);
+      if (typeof left !== typeof right) {
+        throw new CompilerError(
+          `Cannot compare ${typeof left} with ${typeof right}`,
+        );
+      }
+      return {
+        kind: "BooleanLiteral",
+        value: argument.operator === "==" ? left === right : left !== right,
+      };
+    }
     return resolveIntegerExpr(argument, scopes);
   };
   const resolvePrintArgument = (
@@ -140,11 +153,8 @@ export function compileSourceToExecutable(
         scopes.push(new Map());
         processStatements(statement.body);
         scopes.pop();
-      } else if (
-        statement.argument.kind !== "StringLiteral" &&
-        statement.argument.kind !== "BooleanLiteral"
-      ) {
-        resolveIntegerExpr(statement.argument, scopes);
+      } else {
+        resolveExpression(statement.argument);
       }
     }
   };

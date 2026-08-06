@@ -13,6 +13,8 @@ export type TokenType =
   | "LBRACE"
   | "RBRACE"
   | "EQUAL"
+  | "EQEQ"
+  | "NOTEQ"
   | "SEMICOLON"
   | "TRUE"
   | "FALSE"
@@ -35,6 +37,11 @@ const SINGLE_CHAR_TOKENS: Record<string, TokenType> = {
   "=": "EQUAL",
 };
 
+const TWO_CHAR_TOKENS: Record<string, TokenType> = {
+  "==": "EQEQ",
+  "!=": "NOTEQ",
+};
+
 export function tokenize(source: string): Token[] {
   const tokens: Token[] = [];
   let i = 0;
@@ -45,6 +52,14 @@ export function tokenize(source: string): Token[] {
 
     if (/\s/.test(char)) {
       i++;
+      continue;
+    }
+
+    const twoChar = source.slice(i, i + 2);
+    const twoCharTokenType = TWO_CHAR_TOKENS[twoChar];
+    if (twoCharTokenType !== undefined) {
+      tokens.push({ type: twoCharTokenType, value: twoChar });
+      i += 2;
       continue;
     }
 
