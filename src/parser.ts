@@ -11,13 +11,22 @@ export interface IntegerLiteralNode {
   value: number;
 }
 
-export type IntegerExprNode = IntegerLiteralNode | BinaryExprNode;
+export type IntegerExprNode =
+  | IntegerLiteralNode
+  | BinaryExprNode
+  | UnaryExprNode;
 
 export interface BinaryExprNode {
   kind: "BinaryExpr";
-  operator: "+";
+  operator: "+" | "-" | "*";
   left: IntegerExprNode;
   right: IntegerExprNode;
+}
+
+export interface UnaryExprNode {
+  kind: "UnaryExpr";
+  operator: "-" | "+";
+  operand: IntegerExprNode;
 }
 
 export type ExpressionNode = StringLiteralNode | IntegerExprNode;
@@ -79,7 +88,10 @@ function parseExpression(state: ParserState): ExpressionNode {
     const inner = parseExpression(state);
     consume(state, "RPAREN");
     if (inner.kind === "StringLiteral") return inner;
-    return parseAdditiveContinuation(state, inner);
+    return parseAdditiveContinuation(
+      state,
+      parseMultiplicativeContinuation(state, inner),
+    );
   }
   return parseAdditiveExpression(state);
 }
@@ -99,7 +111,7 @@ function consume(state: ParserState, expectedType: TokenType): Token {
   return token;
 }
 
-function parseTerm(state: ParserState): IntegerExprNode {
+function parsePrimary(state: ParserState): IntegerExprNode {
   if (peek(state).type === "LPAREN") {
     consume(state, "LPAREN");
     const inner = parseAdditiveExpression(state);
@@ -110,8 +122,38 @@ function parseTerm(state: ParserState): IntegerExprNode {
   return { kind: "IntegerLiteral", value: Number(token.value) };
 }
 
+function parseUnary(state: ParserState): IntegerExprNode {
+  const tokenType = peek(state).type;
+  if (tokenType === "MINUS" || tokenType === "PLUS") {
+    consume(state, tokenType);
+    return {
+      kind: "UnaryExpr",
+      operator: tokenType === "MINUS" ? "-" : "+",
+      operand: parseUnary(state),
+    };
+  }
+  return parsePrimary(state);
+}
+
+function parseMultiplicativeExpression(state: ParserState): IntegerExprNode {
+  return parseMultiplicativeContinuation(state, parseUnary(state));
+}
+
+function parseMultiplicativeContinuation(
+  state: ParserState,
+  left: IntegerExprNode,
+): IntegerExprNode {
+  let result = left;
+  while (peek(state).type === "MUL") {
+    consume(state, "MUL");
+    const right = parseUnary(state);
+    result = { kind: "BinaryExpr", operator: "*", left: result, right };
+  }
+  return result;
+}
+
 function parseAdditiveExpression(state: ParserState): IntegerExprNode {
-  return parseAdditiveContinuation(state, parseTerm(state));
+  return parseAdditiveContinuation(state, parseMultiplicativeExpression(state));
 }
 
 function parseAdditiveContinuation(
@@ -119,10 +161,11 @@ function parseAdditiveContinuation(
   left: IntegerExprNode,
 ): IntegerExprNode {
   let result = left;
-  while (peek(state).type === "PLUS") {
-    consume(state, "PLUS");
-    const right = parseTerm(state);
-    result = { kind: "BinaryExpr", operator: "+", left: result, right };
+  while (peek(state).type === "PLUS" || peek(state).type === "MINUS") {
+    const operator = peek(state).type === "PLUS" ? "+" : "-";
+    consume(state, peek(state).type);
+    const right = parseMultiplicativeExpression(state);
+    result = { kind: "BinaryExpr", operator, left: result, right };
   }
   return result;
 }

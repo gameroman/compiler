@@ -5,6 +5,8 @@ export type TokenType =
   | "STRING"
   | "INTEGER"
   | "PLUS"
+  | "MINUS"
+  | "MUL"
   | "LPAREN"
   | "RPAREN"
   | "SEMICOLON"
@@ -46,6 +48,16 @@ export function tokenize(source: string): Token[] {
     }
     if (char === "+") {
       tokens.push({ type: "PLUS", value: "+" });
+      i++;
+      continue;
+    }
+    if (char === "-") {
+      tokens.push({ type: "MINUS", value: "-" });
+      i++;
+      continue;
+    }
+    if (char === "*") {
+      tokens.push({ type: "MUL", value: "*" });
       i++;
       continue;
     }

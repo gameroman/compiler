@@ -56,6 +56,44 @@ export class CodeBuilder {
     this.push32(value);
   }
 
+  subRaxImm32(value: number) {
+    this.bytes.push(0x48, 0x2d);
+    this.push32(value);
+  }
+
+  subRaxRdx() {
+    this.bytes.push(0x48, 0x29, 0xd0);
+  }
+
+  xchgRaxRdx() {
+    this.bytes.push(0x48, 0x92);
+  }
+
+  imulRaxImm32(value: number) {
+    this.bytes.push(0x48, 0x69, 0xc0);
+    this.push32(value);
+  }
+
+  imulRaxRdx() {
+    this.bytes.push(0x48, 0x0f, 0xaf, 0xc2);
+  }
+
+  negRax() {
+    this.bytes.push(0x48, 0xf7, 0xd8);
+  }
+
+  xorRsiRsi() {
+    this.bytes.push(0x48, 0x31, 0xf6);
+  }
+
+  incRsi() {
+    this.bytes.push(0x48, 0xff, 0xc6);
+  }
+
+  testRsiRsi() {
+    this.bytes.push(0x48, 0x85, 0xf6);
+  }
+
   pushRax() {
     this.bytes.push(0x50);
   }
@@ -103,6 +141,22 @@ export class CodeBuilder {
   jnzBackwardTo(targetLength: number) {
     const displacement = targetLength - (this.length + 2);
     this.bytes.push(0x75, displacement & 0xff);
+  }
+
+  jnsForward() {
+    this.bytes.push(0x79, 0x00);
+    return this.length - 1;
+  }
+
+  jzForward() {
+    this.bytes.push(0x74, 0x00);
+    return this.length - 1;
+  }
+
+  patchShortJump(displacementByteIndex: number) {
+    const targetLength = this.length;
+    this.bytes[displacementByteIndex] =
+      targetLength - (displacementByteIndex + 1);
   }
 
   xorEcxEcx() {

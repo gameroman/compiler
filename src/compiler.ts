@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import { CompilerError } from "./errors";
 import { tokenize } from "./lexer";
 import { parse } from "./parser";
-import type { IntegerExprNode } from "./parser";
+import type { IntegerExprNode, IntegerLiteralNode } from "./parser";
 import { PEBuilder } from "./pe-builder";
 import { CodeBuilder, Register } from "./x86-64";
 
@@ -201,7 +201,7 @@ function compileIntegerPrint(
   compileIntegerExpression(code, node);
 
   // 3. Convert rax to decimal digits in the scratch buffer.
-  //    On exit: rdi = first digit, r8d = length (digits + EOL)
+  //    On exit: rdi = first digit, r8d = length (sign + digits + EOL)
   code.leaRipRelative(
     Register.RDI,
     MEMORY_LAYOUT.TEXT_RVA,
@@ -218,6 +218,15 @@ function compileIntegerPrint(
     code.movByteRdiImm(0x0d);
     code.movR8d32(2);
   }
+  if (mayBeNegative(node)) {
+    // If rax is negative, negate it and remember the sign in rsi.
+    code.xorRsiRsi();
+    code.testRaxRax();
+    const skipNeg = code.jnsForward();
+    code.negRax();
+    code.incRsi();
+    code.patchShortJump(skipNeg);
+  }
   code.movEcx32(10);
 
   const loopStart = code.length;
@@ -229,6 +238,16 @@ function compileIntegerPrint(
   code.incR8d();
   code.testRaxRax();
   code.jnzBackwardTo(loopStart);
+
+  if (mayBeNegative(node)) {
+    // Prepend '-' if the value was negative.
+    code.testRsiRsi();
+    const done = code.jzForward();
+    code.decRdi();
+    code.movByteRdiImm(0x2d);
+    code.incR8d();
+    code.patchShortJump(done);
+  }
 
   // 4. WriteFile(rbx, rdi, r8d, &bytesWritten, NULL)
   code.movRcxRbx();
@@ -242,19 +261,49 @@ function compileIntegerPrint(
   code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_WRITE_FILE);
 }
 
+function mayBeNegative(node: IntegerExprNode): boolean {
+  if (node.kind === "IntegerLiteral") return false;
+  if (node.kind === "UnaryExpr") return true;
+  return (
+    node.operator === "-" ||
+    mayBeNegative(node.left) ||
+    mayBeNegative(node.right)
+  );
+}
+
+function isIntegerLiteral(node: IntegerExprNode): node is IntegerLiteralNode {
+  return node.kind === "IntegerLiteral";
+}
+
 function compileIntegerExpression(code: CodeBuilder, node: IntegerExprNode) {
   if (node.kind === "IntegerLiteral") {
     code.movRaxImm32(node.value);
     return;
   }
 
-  compileIntegerExpression(code, node.left);
-  if (node.right.kind === "IntegerLiteral") {
-    code.addRaxImm32(node.right.value);
-  } else {
-    code.pushRax();
-    compileIntegerExpression(code, node.right);
-    code.popRdx();
-    code.addRaxRdx();
+  if (node.kind === "UnaryExpr") {
+    compileIntegerExpression(code, node.operand);
+    if (node.operator === "-") {
+      code.negRax();
+    }
+    return;
   }
+
+  compileIntegerExpression(code, node.left);
+  const literal = isIntegerLiteral(node.right) ? node.right : null;
+  if (literal !== null) {
+    if (node.operator === "+") code.addRaxImm32(literal.value);
+    else if (node.operator === "-") code.subRaxImm32(literal.value);
+    else code.imulRaxImm32(literal.value);
+    return;
+  }
+  code.pushRax();
+  compileIntegerExpression(code, node.right);
+  code.popRdx();
+  if (node.operator === "-") {
+    code.xchgRaxRdx();
+  }
+  if (node.operator === "+") code.addRaxRdx();
+  else if (node.operator === "-") code.subRaxRdx();
+  else code.imulRaxRdx();
 }

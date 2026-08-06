@@ -246,6 +246,220 @@ describe("compileSourceToExecutable", () => {
     expect(result.stdout).toBe("3\r\n");
   });
 
+  it("prints the result of a multiplication", () => {
+    const outputFile = compileSource("print(2 * 3)");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"9fc3ccaf314021dd7479defafe61a4a4f91ffaa5627c9802167c2f4262fe03be"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("6\r\n");
+  });
+
+  it("prints a left-associative multiplication chain", () => {
+    const outputFile = compileSource("print(2 * 3 * 4)");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"947d574cd2e16f84d71c932861c3255b7450049377645042fabc62d001db2c83"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("24\r\n");
+  });
+
+  it("respects multiplication over addition precedence", () => {
+    const outputFile = compileSource("print(1 + 2 * 3)");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"cf1a7b67874bd6b9e114ae92789bdea3e3d4464b981e4b2afdcc7fe6947a5c5b"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("7\r\n");
+  });
+
+  it("respects multiplication over addition precedence on the left", () => {
+    const outputFile = compileSource("print(2 * 3 + 4)");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"af16ffc307996f040b9ae8eefe6473170f9fcc5a820cd6a9ccc0e39920ac815e"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("10\r\n");
+  });
+
+  it("lets parentheses override multiplication precedence", () => {
+    const outputFile = compileSource("print((1 + 2) * 3)");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"3d4e22efe3f3e992bd70388c51e74cfb6f426969a783e43a58cdfb5bce797967"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("9\r\n");
+  });
+
+  it("multiplies a group against a literal", () => {
+    const outputFile = compileSource("print(3 * (2 + 4))");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"c52338e1fb725afb34faee656300c1ce8184f30072ec0ec8d57cc511833247d2"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("18\r\n");
+  });
+
+  it("prints the result of a subtraction", () => {
+    const outputFile = compileSource("print(10 - 3)");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"2aaa14d0b62d07fbff5672a4883bc8325d03130fdc0737d27f3133ccdf268472"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("7\r\n");
+  });
+
+  it("prints a left-associative subtraction chain", () => {
+    const outputFile = compileSource("print(10 - 3 - 2)");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"d18aaf7911c83d3273861a89cefbaa3a221641d465f00ea4e309c52e3db4e837"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("5\r\n");
+  });
+
+  it("mixes addition and subtraction left-associatively", () => {
+    const outputFile = compileSource("print(1 - 2 + 3)");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"1549409987c9e0cdad9748f9a7cec8e1cf7fb22fb6336aa998e629d696572801"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("2\r\n");
+  });
+
+  it("prints a negative subtraction result", () => {
+    const outputFile = compileSource("print(3 - 5)");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"73aa791bad8e7a912e9f24d52fe737d36b9a6017a4653f811e4b1b94865204a5"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("-2\r\n");
+  });
+
+  it("prints a negative literal", () => {
+    const outputFile = compileSource("print(-5)");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"5c0b68531af44ce7a08fd8ea988950ac93953469f566f6999a6a0d0b57d4524f"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("-5\r\n");
+  });
+
+  it("prints a positive literal via unary plus", () => {
+    const outputFile = compileSource("print(+5)");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"f7a1c64e77c5162542772f87c2464483dc794f21270e01a68ae0ff403820e62c"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("5\r\n");
+  });
+
+  it("applies unary minus to a group", () => {
+    const outputFile = compileSource("print(-(2 + 3))");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"d0105b4c1af8844df4b5fd0199d182642d0252778a0e83a84250b45a875a35fa"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("-5\r\n");
+  });
+
+  it("subtracts a negative operand", () => {
+    const outputFile = compileSource("print(1 - -2)");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"6c93bc2db452b21b93dcb3003bdfd46e1dac6c20362320c5859b6a009537cf7c"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("3\r\n");
+  });
+
+  it("multiplies by a negative operand", () => {
+    const outputFile = compileSource("print(2 * -3)");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"59b4d4939dcac8079b538483ddae7e12278ef65a7d3d62e3ab9b6a917e3cc45a"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("-6\r\n");
+  });
+
+  it("rejects a missing operand after an operator", () => {
+    expect(() => compileSource("print(1 + *)")).toThrow(CompilerError);
+  });
+
   it("rejects a string inside an addition operand", () => {
     expect(() => compileSource('print((1) + ("hi"))')).toThrow(CompilerError);
   });
