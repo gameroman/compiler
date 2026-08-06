@@ -5,6 +5,8 @@ import { tokenize } from "./lexer";
 import { parse } from "./parser";
 import type {
   ASTNode,
+  BooleanLiteralNode,
+  ExpressionNode,
   IntegerExprNode,
   IntegerLiteralNode,
   ResolvedIntegerExpr,
@@ -46,7 +48,7 @@ type PrintOp =
 
 interface ResolvedPrintStatement {
   kind: "PrintStatement";
-  argument?: StringLiteralNode | ResolvedIntegerExpr;
+  argument?: StringLiteralNode | ResolvedIntegerExpr | BooleanLiteralNode;
 }
 
 export function compileSourceToExecutable(
@@ -59,8 +61,8 @@ export function compileSourceToExecutable(
   const ast = parse(tokens);
 
   const printStatements: ResolvedPrintStatement[] = [];
-  const scopes: Map<string, number>[] = [new Map()];
-  const declare = (name: string, value: number) => {
+  const scopes: Map<string, number | boolean>[] = [new Map()];
+  const declare = (name: string, value: number | boolean) => {
     if (lookupSymbol(scopes, name) !== undefined) {
       throw new CompilerError(`Constant "${name}" is already defined`);
     }
@@ -70,33 +72,55 @@ export function compileSourceToExecutable(
     }
     scope.set(name, value);
   };
+  const resolvePrintArgument = (
+    argument: ExpressionNode | undefined,
+  ):
+    | StringLiteralNode
+    | ResolvedIntegerExpr
+    | BooleanLiteralNode
+    | undefined => {
+    if (argument === undefined) return undefined;
+    if (
+      argument.kind === "StringLiteral" ||
+      argument.kind === "BooleanLiteral"
+    ) {
+      return argument;
+    }
+    if (argument.kind === "Identifier") {
+      const value = lookupSymbol(scopes, argument.name);
+      if (typeof value === "boolean") {
+        return { kind: "BooleanLiteral", value };
+      }
+    }
+    return resolveIntegerExpr(argument, scopes);
+  };
+  const resolveConstValue = (
+    value: IntegerExprNode | BooleanLiteralNode,
+  ): number | boolean => {
+    if (value.kind === "BooleanLiteral") return value.value;
+    if (value.kind === "Identifier") {
+      const resolved = lookupSymbol(scopes, value.name);
+      if (typeof resolved === "boolean") return resolved;
+    }
+    return evalIntegerExpr(resolveIntegerExpr(value, scopes));
+  };
   const processStatements = (statements: ASTNode[]) => {
     for (const statement of statements) {
       if (statement.kind === "ConstDecl") {
-        declare(
-          statement.name,
-          evalIntegerExpr(resolveIntegerExpr(statement.value, scopes)),
-        );
+        declare(statement.name, resolveConstValue(statement.value));
       } else if (statement.kind === "PrintStatement") {
-        if (
-          statement.argument !== undefined &&
-          statement.argument.kind !== "StringLiteral"
-        ) {
-          printStatements.push({
-            kind: "PrintStatement",
-            argument: resolveIntegerExpr(statement.argument, scopes),
-          });
-        } else {
-          printStatements.push({
-            kind: "PrintStatement",
-            argument: statement.argument,
-          });
-        }
+        printStatements.push({
+          kind: "PrintStatement",
+          argument: resolvePrintArgument(statement.argument),
+        });
       } else if (statement.kind === "BlockStatement") {
         scopes.push(new Map());
         processStatements(statement.body);
         scopes.pop();
-      } else if (statement.argument.kind !== "StringLiteral") {
+      } else if (
+        statement.argument.kind !== "StringLiteral" &&
+        statement.argument.kind !== "BooleanLiteral"
+      ) {
         resolveIntegerExpr(statement.argument, scopes);
       }
     }
@@ -117,6 +141,13 @@ export function compileSourceToExecutable(
     } else if (statement.argument.kind === "StringLiteral") {
       const bytes = new TextEncoder().encode(
         statement.argument.value + EOL_STRING[eol],
+      );
+      stringPayloads.push({ rva: nextPayloadRva, bytes });
+      ops.push({ kind: "string", rva: nextPayloadRva, length: bytes.length });
+      nextPayloadRva += bytes.length;
+    } else if (statement.argument.kind === "BooleanLiteral") {
+      const bytes = new TextEncoder().encode(
+        (statement.argument.value ? "true" : "false") + EOL_STRING[eol],
       );
       stringPayloads.push({ rva: nextPayloadRva, bytes });
       ops.push({ kind: "string", rva: nextPayloadRva, length: bytes.length });
@@ -333,9 +364,9 @@ function isIntegerLiteral(
 }
 
 function lookupSymbol(
-  scopes: Map<string, number>[],
+  scopes: Map<string, number | boolean>[],
   name: string,
-): number | undefined {
+): number | boolean | undefined {
   for (let i = scopes.length - 1; i >= 0; i--) {
     const scope = scopes[i];
     if (scope === undefined) continue;
@@ -347,12 +378,17 @@ function lookupSymbol(
 
 function resolveIntegerExpr(
   node: IntegerExprNode,
-  scopes: Map<string, number>[],
+  scopes: Map<string, number | boolean>[],
 ): ResolvedIntegerExpr {
   if (node.kind === "Identifier") {
     const value = lookupSymbol(scopes, node.name);
     if (value === undefined) {
       throw new CompilerError(`Unknown identifier: ${node.name}`);
+    }
+    if (typeof value === "boolean") {
+      throw new CompilerError(
+        `Constant "${node.name}" is a boolean and cannot be used in an integer expression`,
+      );
     }
     return { kind: "IntegerLiteral", value };
   }

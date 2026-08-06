@@ -14,6 +14,8 @@ export type TokenType =
   | "RBRACE"
   | "EQUAL"
   | "SEMICOLON"
+  | "TRUE"
+  | "FALSE"
   | "EOF";
 
 export interface Token {
@@ -121,6 +123,10 @@ export function tokenize(source: string): Token[] {
       }
       if (ident === "print") {
         tokens.push({ type: "PRINT", value: "print" });
+      } else if (ident === "true") {
+        tokens.push({ type: "TRUE", value: "true" });
+      } else if (ident === "false") {
+        tokens.push({ type: "FALSE", value: "false" });
       } else {
         tokens.push({ type: "IDENT", value: ident });
       }

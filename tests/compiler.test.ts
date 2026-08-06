@@ -491,6 +491,138 @@ describe("compileSourceToExecutable", () => {
     );
   });
 
+  it("prints true", () => {
+    const outputFile = compileSource("print(true)");
+
+    runAndExpect(outputFile, "true\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"72b2a8ffef50f0534c45bc0df5a2d7a19625841c11f012433e8f99de6d5542f7"`,
+    );
+  });
+
+  it("prints false", () => {
+    const outputFile = compileSource("print(false)");
+
+    runAndExpect(outputFile, "false\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"41f3343152b3fbb27ec08c5e8787bb1e2f8f09e1c82a45f1835985d18a4e1272"`,
+    );
+  });
+
+  it("prints a parenthesized boolean", () => {
+    const outputFile = compileSource("print((true))");
+
+    runAndExpect(outputFile, "true\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"72b2a8ffef50f0534c45bc0df5a2d7a19625841c11f012433e8f99de6d5542f7"`,
+    );
+  });
+
+  it("prints a boolean constant", () => {
+    const outputFile = compileSource("FLAG = true; print(FLAG)");
+
+    runAndExpect(outputFile, "true\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"72b2a8ffef50f0534c45bc0df5a2d7a19625841c11f012433e8f99de6d5542f7"`,
+    );
+  });
+
+  it("prints a false constant", () => {
+    const outputFile = compileSource("FLAG = false; print(FLAG)");
+
+    runAndExpect(outputFile, "false\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"41f3343152b3fbb27ec08c5e8787bb1e2f8f09e1c82a45f1835985d18a4e1272"`,
+    );
+  });
+
+  it("prints a boolean constant declared inside a block", () => {
+    const outputFile = compileSource("{ FLAG = true; print(FLAG) }");
+
+    runAndExpect(outputFile, "true\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"72b2a8ffef50f0534c45bc0df5a2d7a19625841c11f012433e8f99de6d5542f7"`,
+    );
+  });
+
+  it("folds a boolean constant to the same binary as its literal", () => {
+    const folded = compileSource("FLAG = true; print(FLAG)");
+    const literal = compileSource("print(true)");
+
+    runAndExpect(folded, "true\r\n");
+    runAndExpect(literal, "true\r\n");
+
+    expectSameBinary(folded, literal);
+  });
+
+  it("prints a boolean with the same binary as its string", () => {
+    const boolFile = compileSource("print(true)");
+    const stringFile = compileSource('print("true")');
+
+    runAndExpect(boolFile, "true\r\n");
+    runAndExpect(stringFile, "true\r\n");
+
+    expectSameBinary(boolFile, stringFile);
+  });
+
+  it("compiles a bare boolean expression statement as an empty program", () => {
+    const outputFile = compileSource("true;");
+
+    runAndExpect(outputFile, "");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"08db888a9aa76055731ce8227c2bce5bee9d1c8b2c1fbe53efe3a027c57fd662"`,
+    );
+  });
+
+  it("rejects using a boolean constant in an integer expression", () => {
+    expect(() => compileSource("FLAG = true; print(FLAG + 1)")).toThrow(
+      CompilerError,
+    );
+  });
+
+  it("lets a boolean constant reference an earlier boolean constant", () => {
+    const outputFile = compileSource("FLAG = true; OTHER = FLAG; print(OTHER)");
+
+    runAndExpect(outputFile, "true\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"72b2a8ffef50f0534c45bc0df5a2d7a19625841c11f012433e8f99de6d5542f7"`,
+    );
+  });
+
+  it("rejects using a boolean constant in an integer expression", () => {
+    expect(() =>
+      compileSource("FLAG = true; OTHER = FLAG + 1; print(OTHER)"),
+    ).toThrow(CompilerError);
+  });
+
+  it("rejects an integer expression in a boolean print", () => {
+    expect(() => compileSource("print(true + 1)")).toThrow(CompilerError);
+  });
+
   it("prints a constant declared inside a block", () => {
     const outputFile = compileSource("{ X = 5; print(X) }");
 
