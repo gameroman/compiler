@@ -22,37 +22,19 @@ export type IntegerExprNode =
   | UnaryExprNode
   | IdentifierNode;
 
-export interface IdentifierNode {
+interface IdentifierNode {
   kind: "Identifier";
   name: string;
 }
 
-export type ResolvedIntegerExpr =
-  | IntegerLiteralNode
-  | ResolvedBinaryExprNode
-  | ResolvedUnaryExprNode;
-
-export interface ResolvedBinaryExprNode {
-  kind: "BinaryExpr";
-  operator: "+" | "-" | "*";
-  left: ResolvedIntegerExpr;
-  right: ResolvedIntegerExpr;
-}
-
-export interface ResolvedUnaryExprNode {
-  kind: "UnaryExpr";
-  operator: "-" | "+";
-  operand: ResolvedIntegerExpr;
-}
-
-export interface BinaryExprNode {
+interface BinaryExprNode {
   kind: "BinaryExpr";
   operator: "+" | "-" | "*";
   left: IntegerExprNode;
   right: IntegerExprNode;
 }
 
-export interface UnaryExprNode {
+interface UnaryExprNode {
   kind: "UnaryExpr";
   operator: "-" | "+";
   operand: IntegerExprNode;
@@ -63,23 +45,23 @@ export type ExpressionNode =
   | IntegerExprNode
   | BooleanLiteralNode;
 
-export interface PrintStatementNode {
+interface PrintStatementNode {
   kind: "PrintStatement";
   argument?: ExpressionNode;
 }
 
-export interface ExpressionStatementNode {
+interface ExpressionStatementNode {
   kind: "ExpressionStatement";
   argument: ExpressionNode;
 }
 
-export interface ConstDeclNode {
+interface ConstDeclNode {
   kind: "ConstDecl";
   name: string;
   value: ExpressionNode;
 }
 
-export interface BlockStatementNode {
+interface BlockStatementNode {
   kind: "BlockStatement";
   body: ASTNode[];
 }

@@ -9,11 +9,28 @@ import type {
   ExpressionNode,
   IntegerExprNode,
   IntegerLiteralNode,
-  ResolvedIntegerExpr,
   StringLiteralNode,
 } from "./parser";
 import { PEBuilder } from "./pe-builder";
 import { CodeBuilder, Register } from "./x86-64";
+
+type ResolvedIntegerExpr =
+  | IntegerLiteralNode
+  | ResolvedBinaryExprNode
+  | ResolvedUnaryExprNode;
+
+interface ResolvedBinaryExprNode {
+  kind: "BinaryExpr";
+  operator: "+" | "-" | "*";
+  left: ResolvedIntegerExpr;
+  right: ResolvedIntegerExpr;
+}
+
+interface ResolvedUnaryExprNode {
+  kind: "UnaryExpr";
+  operator: "-" | "+";
+  operand: ResolvedIntegerExpr;
+}
 
 const MEMORY_LAYOUT = {
   TEXT_RVA: 0x1000,
