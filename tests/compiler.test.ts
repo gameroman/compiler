@@ -965,6 +965,174 @@ describe("compileSourceToExecutable", () => {
     expect(() => compileSource("print(X == 1)")).toThrow(CompilerError);
   });
 
+  it("prints the negation of true", () => {
+    const outputFile = compileSource("print(!true)");
+
+    runAndExpect(outputFile, "false\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"41f3343152b3fbb27ec08c5e8787bb1e2f8f09e1c82a45f1835985d18a4e1272"`,
+    );
+  });
+
+  it("prints the negation of false", () => {
+    const outputFile = compileSource("print(!false)");
+
+    runAndExpect(outputFile, "true\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"72b2a8ffef50f0534c45bc0df5a2d7a19625841c11f012433e8f99de6d5542f7"`,
+    );
+  });
+
+  it("folds a negation to the same binary as its literal", () => {
+    const folded = compileSource("print(!true)");
+    const literal = compileSource("print(false)");
+
+    runAndExpect(folded, "false\r\n");
+    runAndExpect(literal, "false\r\n");
+
+    expectSameBinary(folded, literal);
+  });
+
+  it("prints a double negation", () => {
+    const outputFile = compileSource("print(!!true)");
+
+    runAndExpect(outputFile, "true\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"72b2a8ffef50f0534c45bc0df5a2d7a19625841c11f012433e8f99de6d5542f7"`,
+    );
+  });
+
+  it("negates a satisfied equality comparison", () => {
+    const outputFile = compileSource("print(!(1 == 1))");
+
+    runAndExpect(outputFile, "false\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"41f3343152b3fbb27ec08c5e8787bb1e2f8f09e1c82a45f1835985d18a4e1272"`,
+    );
+  });
+
+  it("negates an unsatisfied equality comparison", () => {
+    const outputFile = compileSource("print(!(1 == 2))");
+
+    runAndExpect(outputFile, "true\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"72b2a8ffef50f0534c45bc0df5a2d7a19625841c11f012433e8f99de6d5542f7"`,
+    );
+  });
+
+  it("negates a negation of a comparison", () => {
+    const outputFile = compileSource("print(!(!(1 == 1)))");
+
+    runAndExpect(outputFile, "true\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"72b2a8ffef50f0534c45bc0df5a2d7a19625841c11f012433e8f99de6d5542f7"`,
+    );
+  });
+
+  it("evaluates negation before comparison", () => {
+    const outputFile = compileSource("print(!true == false)");
+
+    runAndExpect(outputFile, "true\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"72b2a8ffef50f0534c45bc0df5a2d7a19625841c11f012433e8f99de6d5542f7"`,
+    );
+  });
+
+  it("folds a negated constant to the same binary as its literal", () => {
+    const folded = compileSource("X = !true; print(X)");
+    const literal = compileSource("print(false)");
+
+    runAndExpect(folded, "false\r\n");
+    runAndExpect(literal, "false\r\n");
+
+    expectSameBinary(folded, literal);
+  });
+
+  it("negates a boolean constant", () => {
+    const outputFile = compileSource("FLAG = false; print(!FLAG)");
+
+    runAndExpect(outputFile, "true\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"72b2a8ffef50f0534c45bc0df5a2d7a19625841c11f012433e8f99de6d5542f7"`,
+    );
+  });
+
+  it("negates a boolean constant declared inside a block", () => {
+    const outputFile = compileSource("{ X = true; print(!X) }");
+
+    runAndExpect(outputFile, "false\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"41f3343152b3fbb27ec08c5e8787bb1e2f8f09e1c82a45f1835985d18a4e1272"`,
+    );
+  });
+
+  it("compiles a bare negation statement as an empty program", () => {
+    const outputFile = compileSource("!true;");
+
+    runAndExpect(outputFile, "");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"08db888a9aa76055731ce8227c2bce5bee9d1c8b2c1fbe53efe3a027c57fd662"`,
+    );
+  });
+
+  it("rejects negating an integer literal", () => {
+    expect(() => compileSource("print(!1)")).toThrow(CompilerError);
+  });
+
+  it("rejects negating a string literal", () => {
+    expect(() => compileSource('print(!"a")')).toThrow(CompilerError);
+  });
+
+  it("rejects negating an integer expression", () => {
+    expect(() => compileSource("print(!(1 + 1))")).toThrow(CompilerError);
+  });
+
+  it("rejects using a negation in an integer expression", () => {
+    expect(() => compileSource("print(!true + 1)")).toThrow(CompilerError);
+  });
+
+  it("rejects negating an integer constant", () => {
+    expect(() => compileSource("X = 5; print(!X)")).toThrow(CompilerError);
+  });
+
+  it("rejects negating a string constant", () => {
+    expect(() => compileSource('s = "a"; print(!s)')).toThrow(CompilerError);
+  });
+
+  it("rejects negating an undeclared identifier", () => {
+    expect(() => compileSource("print(!X)")).toThrow(CompilerError);
+  });
+
   it("prints a constant declared inside a block", () => {
     const outputFile = compileSource("{ X = 5; print(X) }");
 

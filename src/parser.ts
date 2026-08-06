@@ -47,11 +47,17 @@ interface ComparisonExprNode {
   right: ExpressionNode;
 }
 
+interface NotExprNode {
+  kind: "NotExpr";
+  operand: ExpressionNode;
+}
+
 export type ExpressionNode =
   | StringLiteralNode
   | IntegerExprNode
   | BooleanLiteralNode
-  | ComparisonExprNode;
+  | ComparisonExprNode
+  | NotExprNode;
 
 interface PrintStatementNode {
   kind: "PrintStatement";
@@ -225,6 +231,28 @@ function requireInteger(node: ExpressionNode): IntegerExprNode {
       "A comparison cannot be used in an integer expression",
     );
   }
+  if (node.kind === "NotExpr") {
+    throw new CompilerError(
+      "A boolean cannot be used in an integer expression",
+    );
+  }
+  return node;
+}
+
+function requireBoolean(node: ExpressionNode): ExpressionNode {
+  if (node.kind === "StringLiteral") {
+    throw new CompilerError("A string cannot be used in a boolean expression");
+  }
+  if (node.kind === "IntegerLiteral") {
+    throw new CompilerError(
+      "An integer cannot be used in a boolean expression",
+    );
+  }
+  if (node.kind === "UnaryExpr" || node.kind === "BinaryExpr") {
+    throw new CompilerError(
+      "An integer expression cannot be used in a boolean expression",
+    );
+  }
   return node;
 }
 
@@ -236,6 +264,13 @@ function parseUnary(state: ParserState): ExpressionNode {
       kind: "UnaryExpr",
       operator: tokenType === "MINUS" ? "-" : "+",
       operand: requireInteger(parseUnary(state)),
+    };
+  }
+  if (tokenType === "BANG") {
+    consume(state, "BANG");
+    return {
+      kind: "NotExpr",
+      operand: requireBoolean(parseUnary(state)),
     };
   }
   return parsePrimary(state);

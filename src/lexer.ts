@@ -15,6 +15,7 @@ export type TokenType =
   | "EQUAL"
   | "EQEQ"
   | "NOTEQ"
+  | "BANG"
   | "SEMICOLON"
   | "TRUE"
   | "FALSE"
@@ -35,6 +36,7 @@ const SINGLE_CHAR_TOKENS: Record<string, TokenType> = {
   "-": "MINUS",
   "*": "MUL",
   "=": "EQUAL",
+  "!": "BANG",
 };
 
 const TWO_CHAR_TOKENS: Record<string, TokenType> = {

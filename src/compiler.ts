@@ -120,6 +120,16 @@ export function compileSourceToExecutable(
         value: argument.operator === "==" ? left === right : left !== right,
       };
     }
+    if (argument.kind === "NotExpr") {
+      const operand = resolveExpression(argument.operand);
+      if (operand.kind === "StringLiteral") {
+        throw new CompilerError("Cannot negate a string");
+      }
+      if (operand.kind !== "BooleanLiteral") {
+        throw new CompilerError("Cannot negate an integer");
+      }
+      return { kind: "BooleanLiteral", value: !operand.value };
+    }
     return resolveIntegerExpr(argument, scopes);
   };
   const resolvePrintArgument = (
