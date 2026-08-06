@@ -244,6 +244,9 @@ function compileIntegerPrint(
   node: ResolvedIntegerExpr,
   eol: Eol,
 ) {
+  const folded = foldIntegerExpr(node);
+  const negative = folded !== null ? folded < 0 : mayBeNegative(node);
+
   // 1. GetStdHandle(-11) -> rbx
   code.movEcx32(-11);
   code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_GET_STD_HANDLE);
@@ -270,7 +273,7 @@ function compileIntegerPrint(
     code.movByteRdiImm(0x0d);
     code.movR8d32(2);
   }
-  if (mayBeNegative(node)) {
+  if (negative) {
     // If rax is negative, negate it and remember the sign in rsi.
     code.xorRsiRsi();
     code.testRaxRax();
@@ -291,7 +294,7 @@ function compileIntegerPrint(
   code.testRaxRax();
   code.jnzBackwardTo(loopStart);
 
-  if (mayBeNegative(node)) {
+  if (negative) {
     // Prepend '-' if the value was negative.
     code.testRsiRsi();
     const done = code.jzForward();
@@ -382,10 +385,20 @@ function evalIntegerExpr(node: ResolvedIntegerExpr): number {
   return left * right;
 }
 
+function foldIntegerExpr(node: ResolvedIntegerExpr): number | null {
+  const value = evalIntegerExpr(node);
+  return value >= -0x80000000 && value <= 0x7fffffff ? value : null;
+}
+
 function compileIntegerExpression(
   code: CodeBuilder,
   node: ResolvedIntegerExpr,
 ) {
+  const folded = foldIntegerExpr(node);
+  if (folded !== null) {
+    code.movRaxImm32(folded);
+    return;
+  }
   if (node.kind === "IntegerLiteral") {
     code.movRaxImm32(node.value);
     return;

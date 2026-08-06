@@ -41,6 +41,13 @@ function runAndExpect(outputFile: string, expectedStdout: string) {
   expect(result.stdout).toBe(expectedStdout);
 }
 
+function expectSameBinary(a: string, b: string) {
+  const aFingerprint = fingerprint(a);
+  const bFingerprint = fingerprint(b);
+  expect(aFingerprint.size).toBe(bFingerprint.size);
+  expect(aFingerprint.hash).toBe(bFingerprint.hash);
+}
+
 describe("compileSourceToExecutable", () => {
   it("produces a binary that prints hello world", () => {
     const outputFile = compileSource('print("hello world")');
@@ -146,7 +153,29 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"893e9a632c719b697a34b1575c4f72431b26d90f212c238914622925e63639a3"`,
+      `"33001d64cd13b259a887982a14d3da2c791e85d1aae1889850a845980016b8d8"`,
+    );
+  });
+
+  it("folds a constant expression to the same binary as its literal", () => {
+    const folded = compileSource("print(1 + 2)");
+    const literal = compileSource("print(3)");
+
+    runAndExpect(folded, "3\r\n");
+    runAndExpect(literal, "3\r\n");
+
+    expectSameBinary(folded, literal);
+  });
+
+  it("keeps 64-bit precision when a folded result overflows 32 bits", () => {
+    const outputFile = compileSource("print(2147483647 + 1)");
+
+    runAndExpect(outputFile, "2147483648\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"4f0441805f3c7bf2e65e03b904c4037112f72f19656a797a601e7a2613bb6c14"`,
     );
   });
 
@@ -158,7 +187,7 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"f3044c40bc22981e92a20f2ae094b5364471d6c3864d2a1fca7fcb256e2fc2cb"`,
+      `"34c12a80647a1c69deea7685139665a5ccb92b8e1a23b86550c3814db3121db2"`,
     );
   });
 
@@ -194,7 +223,7 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"893e9a632c719b697a34b1575c4f72431b26d90f212c238914622925e63639a3"`,
+      `"33001d64cd13b259a887982a14d3da2c791e85d1aae1889850a845980016b8d8"`,
     );
   });
 
@@ -206,7 +235,7 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"893e9a632c719b697a34b1575c4f72431b26d90f212c238914622925e63639a3"`,
+      `"33001d64cd13b259a887982a14d3da2c791e85d1aae1889850a845980016b8d8"`,
     );
   });
 
@@ -218,7 +247,7 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"893e9a632c719b697a34b1575c4f72431b26d90f212c238914622925e63639a3"`,
+      `"33001d64cd13b259a887982a14d3da2c791e85d1aae1889850a845980016b8d8"`,
     );
   });
 
@@ -230,7 +259,7 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"9fc3ccaf314021dd7479defafe61a4a4f91ffaa5627c9802167c2f4262fe03be"`,
+      `"34c12a80647a1c69deea7685139665a5ccb92b8e1a23b86550c3814db3121db2"`,
     );
   });
 
@@ -242,7 +271,7 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"947d574cd2e16f84d71c932861c3255b7450049377645042fabc62d001db2c83"`,
+      `"f8acf64a402153f41362a37678ed0b8ac8e43c3513e9b90424e3cccf2b195a54"`,
     );
   });
 
@@ -254,7 +283,7 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"cf1a7b67874bd6b9e114ae92789bdea3e3d4464b981e4b2afdcc7fe6947a5c5b"`,
+      `"4ff9b97fd3f6d725978c6aa8589bd86d0dea6d1863e82a6f6063bdcb62a37eed"`,
     );
   });
 
@@ -266,7 +295,7 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"af16ffc307996f040b9ae8eefe6473170f9fcc5a820cd6a9ccc0e39920ac815e"`,
+      `"0a4d435d6e40e5e24d0d762f53028abe938081056834409ec3b003dfc0d2eab6"`,
     );
   });
 
@@ -278,7 +307,7 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"3d4e22efe3f3e992bd70388c51e74cfb6f426969a783e43a58cdfb5bce797967"`,
+      `"88fd5833555115d81dff58ada875bc7c64c9fc618a30a0896d67f742086d00ec"`,
     );
   });
 
@@ -290,7 +319,7 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"c52338e1fb725afb34faee656300c1ce8184f30072ec0ec8d57cc511833247d2"`,
+      `"0450b242aae7a163847e0e80b1e66c5f7de8ed117155535150eca7a9226594b9"`,
     );
   });
 
@@ -302,7 +331,7 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"2aaa14d0b62d07fbff5672a4883bc8325d03130fdc0737d27f3133ccdf268472"`,
+      `"4ff9b97fd3f6d725978c6aa8589bd86d0dea6d1863e82a6f6063bdcb62a37eed"`,
     );
   });
 
@@ -314,7 +343,7 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"d18aaf7911c83d3273861a89cefbaa3a221641d465f00ea4e309c52e3db4e837"`,
+      `"1a97d8c031f0bfdb61f7961359218ead1c7111e2ecaafdaf6407cbf437b6cc5f"`,
     );
   });
 
@@ -326,7 +355,7 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"1549409987c9e0cdad9748f9a7cec8e1cf7fb22fb6336aa998e629d696572801"`,
+      `"776b62395eca59e2e86482b25df16bd58ca279b4cbdf824e71ca49d6f7c0593c"`,
     );
   });
 
@@ -338,7 +367,7 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"73aa791bad8e7a912e9f24d52fe737d36b9a6017a4653f811e4b1b94865204a5"`,
+      `"54e87444e161d5278b0c747ebe4b4aec7f801146eb3e8135530ee32d38b31f52"`,
     );
   });
 
@@ -350,7 +379,7 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"5c0b68531af44ce7a08fd8ea988950ac93953469f566f6999a6a0d0b57d4524f"`,
+      `"0ba8f524ab9c41862c727c22ddb30f7bbec7ee388c7e6927ec9cc01f4530b446"`,
     );
   });
 
@@ -362,7 +391,7 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"f7a1c64e77c5162542772f87c2464483dc794f21270e01a68ae0ff403820e62c"`,
+      `"1a97d8c031f0bfdb61f7961359218ead1c7111e2ecaafdaf6407cbf437b6cc5f"`,
     );
   });
 
@@ -374,7 +403,7 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"d0105b4c1af8844df4b5fd0199d182642d0252778a0e83a84250b45a875a35fa"`,
+      `"0ba8f524ab9c41862c727c22ddb30f7bbec7ee388c7e6927ec9cc01f4530b446"`,
     );
   });
 
@@ -386,7 +415,7 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"6c93bc2db452b21b93dcb3003bdfd46e1dac6c20362320c5859b6a009537cf7c"`,
+      `"33001d64cd13b259a887982a14d3da2c791e85d1aae1889850a845980016b8d8"`,
     );
   });
 
@@ -398,7 +427,7 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"59b4d4939dcac8079b538483ddae7e12278ef65a7d3d62e3ab9b6a917e3cc45a"`,
+      `"e1b8efbdc37323128a16c92b03bf634adb65cdbe6385112481703a18cf53821d"`,
     );
   });
 
@@ -458,7 +487,7 @@ describe("compileSourceToExecutable", () => {
     const { size, hash } = fingerprint(outputFile);
     expect(size).toMatchInlineSnapshot(`1536`);
     expect(hash).toMatchInlineSnapshot(
-      `"b1bbfc8ff07f176d2120aea21551d31adfe42229ffefebede225cd8fe6e8008d"`,
+      `"34c12a80647a1c69deea7685139665a5ccb92b8e1a23b86550c3814db3121db2"`,
     );
   });
 
