@@ -14,6 +14,17 @@ export interface IntegerLiteralNode {
 export type IntegerExprNode =
   | IntegerLiteralNode
   | BinaryExprNode
+  | UnaryExprNode
+  | IdentifierNode;
+
+export interface IdentifierNode {
+  kind: "Identifier";
+  name: string;
+}
+
+export type ResolvedIntegerExpr =
+  | IntegerLiteralNode
+  | BinaryExprNode
   | UnaryExprNode;
 
 export interface BinaryExprNode {
@@ -41,7 +52,16 @@ export interface ExpressionStatementNode {
   argument: ExpressionNode;
 }
 
-export type ASTNode = PrintStatementNode | ExpressionStatementNode;
+export interface ConstDeclNode {
+  kind: "ConstDecl";
+  name: string;
+  value: IntegerExprNode;
+}
+
+export type ASTNode =
+  | PrintStatementNode
+  | ExpressionStatementNode
+  | ConstDeclNode;
 
 interface ParserState {
   tokens: Token[];
@@ -67,6 +87,14 @@ export function parse(tokens: Token[]): ASTNode[] {
       }
       consume(state, "RPAREN");
       ast.push(statement);
+    } else if (
+      peek(state).type === "IDENT" &&
+      peekNext(state).type === "EQUAL"
+    ) {
+      const nameToken = consume(state, "IDENT");
+      consume(state, "EQUAL");
+      const value = parseAdditiveExpression(state);
+      ast.push({ kind: "ConstDecl", name: nameToken.value, value });
     } else {
       ast.push({
         kind: "ExpressionStatement",
@@ -76,6 +104,10 @@ export function parse(tokens: Token[]): ASTNode[] {
   }
 
   return ast;
+}
+
+function peekNext(state: ParserState): Token {
+  return state.tokens[state.current + 1];
 }
 
 function parseExpression(state: ParserState): ExpressionNode {
@@ -117,6 +149,10 @@ function parsePrimary(state: ParserState): IntegerExprNode {
     const inner = parseAdditiveExpression(state);
     consume(state, "RPAREN");
     return inner;
+  }
+  if (peek(state).type === "IDENT") {
+    const token = consume(state, "IDENT");
+    return { kind: "Identifier", name: token.value };
   }
   const token = consume(state, "INTEGER");
   return { kind: "IntegerLiteral", value: Number(token.value) };

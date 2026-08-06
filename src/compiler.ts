@@ -3,7 +3,12 @@ import * as fs from "node:fs";
 import { CompilerError } from "./errors";
 import { tokenize } from "./lexer";
 import { parse } from "./parser";
-import type { IntegerExprNode, IntegerLiteralNode } from "./parser";
+import type {
+  IntegerExprNode,
+  IntegerLiteralNode,
+  PrintStatementNode,
+  ResolvedIntegerExpr,
+} from "./parser";
 import { PEBuilder } from "./pe-builder";
 import { CodeBuilder, Register } from "./x86-64";
 
@@ -47,9 +52,35 @@ export function compileSourceToExecutable(
   const tokens = tokenize(sourceCode);
   const ast = parse(tokens);
 
-  const printStatements = ast.filter(
-    (statement) => statement.kind === "PrintStatement",
-  );
+  const printStatements: PrintStatementNode[] = [];
+  const symbols = new Map<string, number>();
+  for (const statement of ast) {
+    if (statement.kind === "ConstDecl") {
+      if (symbols.has(statement.name)) {
+        throw new CompilerError(
+          `Constant "${statement.name}" is already defined`,
+        );
+      }
+      const value = evalIntegerExpr(
+        resolveIntegerExpr(statement.value, symbols),
+      );
+      symbols.set(statement.name, value);
+    } else if (statement.kind === "PrintStatement") {
+      if (
+        statement.argument !== undefined &&
+        statement.argument.kind !== "StringLiteral"
+      ) {
+        printStatements.push({
+          kind: "PrintStatement",
+          argument: resolveIntegerExpr(statement.argument, symbols),
+        });
+      } else {
+        printStatements.push(statement);
+      }
+    } else if (statement.argument.kind !== "StringLiteral") {
+      resolveIntegerExpr(statement.argument, symbols);
+    }
+  }
 
   // Allocate a contiguous region in .rdata for each string literal's payload
   // (value + EOL), starting at STRING_PAYLOAD.
@@ -262,7 +293,7 @@ function compileIntegerPrint(
 }
 
 function mayBeNegative(node: IntegerExprNode): boolean {
-  if (node.kind === "IntegerLiteral") return false;
+  if (node.kind === "IntegerLiteral") return node.value < 0;
   if (node.kind === "UnaryExpr") return true;
   return (
     node.operator === "-" ||
@@ -273,6 +304,51 @@ function mayBeNegative(node: IntegerExprNode): boolean {
 
 function isIntegerLiteral(node: IntegerExprNode): node is IntegerLiteralNode {
   return node.kind === "IntegerLiteral";
+}
+
+function resolveIntegerExpr(
+  node: IntegerExprNode,
+  symbols: Map<string, number>,
+): ResolvedIntegerExpr {
+  if (node.kind === "Identifier") {
+    const value = symbols.get(node.name);
+    if (value === undefined) {
+      throw new CompilerError(`Unknown identifier: ${node.name}`);
+    }
+    return { kind: "IntegerLiteral", value };
+  }
+  if (node.kind === "IntegerLiteral") return node;
+  if (node.kind === "UnaryExpr") {
+    return {
+      kind: "UnaryExpr",
+      operator: node.operator,
+      operand: resolveIntegerExpr(node.operand, symbols),
+    };
+  }
+  return {
+    kind: "BinaryExpr",
+    operator: node.operator,
+    left: resolveIntegerExpr(node.left, symbols),
+    right: resolveIntegerExpr(node.right, symbols),
+  };
+}
+
+function evalIntegerExpr(node: IntegerExprNode): number {
+  if (node.kind === "Identifier") {
+    throw new CompilerError(
+      `Unexpected identifier "${node.name}" in expression`,
+    );
+  }
+  if (node.kind === "IntegerLiteral") return node.value;
+  if (node.kind === "UnaryExpr") {
+    const operand = evalIntegerExpr(node.operand);
+    return node.operator === "-" ? -operand : operand;
+  }
+  const left = evalIntegerExpr(node.left);
+  const right = evalIntegerExpr(node.right);
+  if (node.operator === "+") return left + right;
+  if (node.operator === "-") return left - right;
+  return left * right;
 }
 
 function compileIntegerExpression(code: CodeBuilder, node: IntegerExprNode) {

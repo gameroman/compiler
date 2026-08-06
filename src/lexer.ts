@@ -4,11 +4,13 @@ export type TokenType =
   | "PRINT"
   | "STRING"
   | "INTEGER"
+  | "IDENT"
   | "PLUS"
   | "MINUS"
   | "MUL"
   | "LPAREN"
   | "RPAREN"
+  | "EQUAL"
   | "SEMICOLON"
   | "EOF";
 
@@ -61,6 +63,11 @@ export function tokenize(source: string): Token[] {
       i++;
       continue;
     }
+    if (char === "=") {
+      tokens.push({ type: "EQUAL", value: "=" });
+      i++;
+      continue;
+    }
 
     // Match String Literals: "hello world"
     if (char === '"') {
@@ -101,7 +108,7 @@ export function tokenize(source: string): Token[] {
       if (ident === "print") {
         tokens.push({ type: "PRINT", value: "print" });
       } else {
-        throw new CompilerError(`Unknown identifier: ${ident}`);
+        tokens.push({ type: "IDENT", value: ident });
       }
       continue;
     }

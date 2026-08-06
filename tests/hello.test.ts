@@ -456,6 +456,90 @@ describe("compileSourceToExecutable", () => {
     expect(result.stdout).toBe("-6\r\n");
   });
 
+  it("prints the value of a constant", () => {
+    const outputFile = compileSource("X = 5; print(X)");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"1a97d8c031f0bfdb61f7961359218ead1c7111e2ecaafdaf6407cbf437b6cc5f"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("5\r\n");
+  });
+
+  it("folds a constant expression into a constant", () => {
+    const outputFile = compileSource("X = 1 + 2; print(X)");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"33001d64cd13b259a887982a14d3da2c791e85d1aae1889850a845980016b8d8"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("3\r\n");
+  });
+
+  it("lets constants reference earlier constants", () => {
+    const outputFile = compileSource("X = 2; Y = X * 3; print(Y)");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"34c12a80647a1c69deea7685139665a5ccb92b8e1a23b86550c3814db3121db2"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("6\r\n");
+  });
+
+  it("prints a negative constant", () => {
+    const outputFile = compileSource("X = -5; print(X)");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"0ba8f524ab9c41862c727c22ddb30f7bbec7ee388c7e6927ec9cc01f4530b446"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("-5\r\n");
+  });
+
+  it("uses a constant inside an expression", () => {
+    const outputFile = compileSource("X = 10; print(X - 4)");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"b1bbfc8ff07f176d2120aea21551d31adfe42229ffefebede225cd8fe6e8008d"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("6\r\n");
+  });
+
+  it("rejects redefining an already-defined constant", () => {
+    expect(() => compileSource("X = 1; X = 2; print(X)")).toThrow(
+      CompilerError,
+    );
+  });
+
+  it("rejects using an undeclared identifier", () => {
+    expect(() => compileSource("print(X)")).toThrow(CompilerError);
+  });
+
+  it("rejects a constant value referencing an undeclared identifier", () => {
+    expect(() => compileSource("X = Y; print(X)")).toThrow(CompilerError);
+  });
+
   it("rejects a missing operand after an operator", () => {
     expect(() => compileSource("print(1 + *)")).toThrow(CompilerError);
   });
