@@ -163,6 +163,22 @@ export function compileSourceToExecutable(
         scopes.push(new Map());
         processStatements(statement.body);
         scopes.pop();
+      } else if (statement.kind === "IfStatement") {
+        const condition = resolveExpression(statement.condition);
+        if (condition.kind !== "BooleanLiteral") {
+          throw new CompilerError("An if condition must be a boolean");
+        }
+        const branch = condition.value
+          ? statement.thenBlock
+          : statement.elseBranch;
+        if (branch === undefined) continue;
+        if (branch.kind === "BlockStatement") {
+          scopes.push(new Map());
+          processStatements(branch.body);
+          scopes.pop();
+        } else {
+          processStatements([branch]);
+        }
       } else {
         resolveExpression(statement.argument);
       }

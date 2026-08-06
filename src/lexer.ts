@@ -19,6 +19,8 @@ export type TokenType =
   | "SEMICOLON"
   | "TRUE"
   | "FALSE"
+  | "IF"
+  | "ELSE"
   | "EOF";
 
 export interface Token {
@@ -116,6 +118,10 @@ export function tokenize(source: string): Token[] {
         tokens.push({ type: "TRUE", value: "true" });
       } else if (ident === "false") {
         tokens.push({ type: "FALSE", value: "false" });
+      } else if (ident === "if") {
+        tokens.push({ type: "IF", value: "if" });
+      } else if (ident === "else") {
+        tokens.push({ type: "ELSE", value: "else" });
       } else {
         tokens.push({ type: "IDENT", value: ident });
       }

@@ -80,11 +80,19 @@ interface BlockStatementNode {
   body: ASTNode[];
 }
 
+interface IfStatementNode {
+  kind: "IfStatement";
+  condition: ExpressionNode;
+  thenBlock: BlockStatementNode;
+  elseBranch?: BlockStatementNode | IfStatementNode;
+}
+
 export type ASTNode =
   | PrintStatementNode
   | ExpressionStatementNode
   | ConstDeclNode
-  | BlockStatementNode;
+  | BlockStatementNode
+  | IfStatementNode;
 
 interface ParserState {
   tokens: Token[];
@@ -122,6 +130,9 @@ function parseStatement(state: ParserState): ASTNode {
   if (peek(state).type === "LBRACE") {
     return parseBlock(state);
   }
+  if (peek(state).type === "IF") {
+    return parseIfStatement(state);
+  }
   if (peek(state).type === "IDENT" && peekNext(state)?.type === "EQUAL") {
     const nameToken = consume(state, "IDENT");
     consume(state, "EQUAL");
@@ -139,6 +150,32 @@ function parseBlock(state: ParserState): BlockStatementNode {
   const body = parseStatements(state, "RBRACE");
   consume(state, "RBRACE");
   return { kind: "BlockStatement", body };
+}
+
+function parseIfStatement(state: ParserState): IfStatementNode {
+  consume(state, "IF");
+  consume(state, "LPAREN");
+  const condition = requireBoolean(parseExpression(state));
+  consume(state, "RPAREN");
+  const thenBlock = parseBlock(state);
+  if (peek(state).type === "ELSE") {
+    consume(state, "ELSE");
+    if (peek(state).type === "IF") {
+      return {
+        kind: "IfStatement",
+        condition,
+        thenBlock,
+        elseBranch: parseIfStatement(state),
+      };
+    }
+    return {
+      kind: "IfStatement",
+      condition,
+      thenBlock,
+      elseBranch: parseBlock(state),
+    };
+  }
+  return { kind: "IfStatement", condition, thenBlock };
 }
 
 function peekNext(state: ParserState): Token | undefined {
