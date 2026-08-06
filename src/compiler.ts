@@ -57,7 +57,12 @@ export function compileSourceToExecutable(
   const ops: PrintOp[] = [];
   let nextPayloadRva = MEMORY_LAYOUT.STRING_PAYLOAD;
   for (const statement of printStatements) {
-    if (statement.argument.kind === "StringLiteral") {
+    if (statement.argument === undefined) {
+      const bytes = new TextEncoder().encode(EOL_STRING[eol]);
+      stringPayloads.push({ rva: nextPayloadRva, bytes });
+      ops.push({ kind: "string", rva: nextPayloadRva, length: bytes.length });
+      nextPayloadRva += bytes.length;
+    } else if (statement.argument.kind === "StringLiteral") {
       const bytes = new TextEncoder().encode(
         statement.argument.value + EOL_STRING[eol],
       );

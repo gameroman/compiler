@@ -24,10 +24,15 @@ export type ExpressionNode = StringLiteralNode | IntegerExprNode;
 
 export interface PrintStatementNode {
   kind: "PrintStatement";
+  argument?: ExpressionNode;
+}
+
+export interface ExpressionStatementNode {
+  kind: "ExpressionStatement";
   argument: ExpressionNode;
 }
 
-export type ASTNode = PrintStatementNode;
+export type ASTNode = PrintStatementNode | ExpressionStatementNode;
 
 interface ParserState {
   tokens: Token[];
@@ -47,25 +52,29 @@ export function parse(tokens: Token[]): ASTNode[] {
     if (peek(state).type === "PRINT") {
       consume(state, "PRINT");
       consume(state, "LPAREN");
-
-      let argument: ExpressionNode;
-      if (peek(state).type === "STRING") {
-        const strToken = consume(state, "STRING");
-        argument = { kind: "StringLiteral", value: strToken.value };
-      } else {
-        argument = parseAdditiveExpression(state);
+      const statement: PrintStatementNode = { kind: "PrintStatement" };
+      if (peek(state).type !== "RPAREN") {
+        statement.argument = parseExpression(state);
       }
-
       consume(state, "RPAREN");
-      ast.push({ kind: "PrintStatement", argument });
+      ast.push(statement);
     } else {
-      throw new CompilerError(
-        `Unexpected token at root level: ${peek(state).type}`,
-      );
+      ast.push({
+        kind: "ExpressionStatement",
+        argument: parseExpression(state),
+      });
     }
   }
 
   return ast;
+}
+
+function parseExpression(state: ParserState): ExpressionNode {
+  if (peek(state).type === "STRING") {
+    const strToken = consume(state, "STRING");
+    return { kind: "StringLiteral", value: strToken.value };
+  }
+  return parseAdditiveExpression(state);
 }
 
 function peek(state: ParserState): Token {

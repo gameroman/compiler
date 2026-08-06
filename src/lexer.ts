@@ -1,3 +1,5 @@
+import { CompilerError } from "./errors";
+
 export type TokenType =
   | "PRINT"
   | "STRING"
@@ -56,6 +58,9 @@ export function tokenize(source: string): Token[] {
         value += source[i];
         i++;
       }
+      if (i >= source.length) {
+        throw new CompilerError("Unterminated string literal");
+      }
       i++; // Skip closing quote
       tokens.push({ type: "STRING", value });
       continue;
@@ -84,12 +89,12 @@ export function tokenize(source: string): Token[] {
       if (ident === "print") {
         tokens.push({ type: "PRINT", value: "print" });
       } else {
-        throw new Error(`Unknown identifier: ${ident}`);
+        throw new CompilerError(`Unknown identifier: ${ident}`);
       }
       continue;
     }
 
-    throw new Error(`Unexpected character: ${char}`);
+    throw new CompilerError(`Unexpected character: ${char}`);
   }
 
   tokens.push({ type: "EOF", value: "" });

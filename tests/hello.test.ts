@@ -176,11 +176,101 @@ describe("compileSourceToExecutable", () => {
     expect(result.stdout).toBe("6\r\n");
   });
 
+  it("compiles a bare semicolon as an empty program", () => {
+    const outputFile = compileSource(";");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"08db888a9aa76055731ce8227c2bce5bee9d1c8b2c1fbe53efe3a027c57fd662"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
+  it("compiles a bare string expression statement", () => {
+    const outputFile = compileSource('"hello"');
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"08db888a9aa76055731ce8227c2bce5bee9d1c8b2c1fbe53efe3a027c57fd662"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
+  it("compiles a bare integer expression statement", () => {
+    const outputFile = compileSource("1 + 2");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"08db888a9aa76055731ce8227c2bce5bee9d1c8b2c1fbe53efe3a027c57fd662"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("");
+  });
+
   it("rejects a string followed by an integer addition", () => {
     expect(() => compileSource('print("abc" + 123)')).toThrow(CompilerError);
   });
 
   it("rejects an integer followed by a string addition", () => {
     expect(() => compileSource('print(123 + "abc")')).toThrow(CompilerError);
+  });
+
+  it("rejects an unterminated string literal", () => {
+    expect(() => compileSource('"')).toThrow(CompilerError);
+  });
+
+  it("rejects an unclosed print parenthesis", () => {
+    expect(() => compileSource("print(")).toThrow(CompilerError);
+  });
+
+  it("rejects a semicolon inside print parentheses", () => {
+    expect(() => compileSource("print(;)")).toThrow(CompilerError);
+  });
+
+  it("prints a newline for an empty print", () => {
+    const outputFile = compileSource("print()");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"9a7bb965268a3497064d969469bd7bbee644a3957a1a3023920e6cbb0ac0a790"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("\r\n");
+  });
+
+  it("prints a newline for an empty print with lf eol", () => {
+    const outputFile = compileSource("print()", { eol: "lf" });
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"d9415ac4b252274b9ccf8489470f365502414d29d988485cd0e6bc5c1bccf2b4"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("\n");
+  });
+
+  it("rejects a trailing plus", () => {
+    expect(() => compileSource("1 +")).toThrow(CompilerError);
+  });
+
+  it("rejects print without parentheses", () => {
+    expect(() => compileSource("print 1")).toThrow(CompilerError);
   });
 });
