@@ -61,8 +61,8 @@ export function compileSourceToExecutable(
   const ast = parse(tokens);
 
   const printStatements: ResolvedPrintStatement[] = [];
-  const scopes: Map<string, number | boolean>[] = [new Map()];
-  const declare = (name: string, value: number | boolean) => {
+  const scopes: Map<string, number | boolean | string>[] = [new Map()];
+  const declare = (name: string, value: number | boolean | string) => {
     if (lookupSymbol(scopes, name) !== undefined) {
       throw new CompilerError(`Constant "${name}" is already defined`);
     }
@@ -91,16 +91,22 @@ export function compileSourceToExecutable(
       if (typeof value === "boolean") {
         return { kind: "BooleanLiteral", value };
       }
+      if (typeof value === "string") {
+        return { kind: "StringLiteral", value };
+      }
     }
     return resolveIntegerExpr(argument, scopes);
   };
   const resolveConstValue = (
-    value: IntegerExprNode | BooleanLiteralNode,
-  ): number | boolean => {
+    value: StringLiteralNode | IntegerExprNode | BooleanLiteralNode,
+  ): number | boolean | string => {
     if (value.kind === "BooleanLiteral") return value.value;
+    if (value.kind === "StringLiteral") return value.value;
     if (value.kind === "Identifier") {
       const resolved = lookupSymbol(scopes, value.name);
-      if (typeof resolved === "boolean") return resolved;
+      if (typeof resolved === "boolean" || typeof resolved === "string") {
+        return resolved;
+      }
     }
     return evalIntegerExpr(resolveIntegerExpr(value, scopes));
   };
@@ -364,9 +370,9 @@ function isIntegerLiteral(
 }
 
 function lookupSymbol(
-  scopes: Map<string, number | boolean>[],
+  scopes: Map<string, number | boolean | string>[],
   name: string,
-): number | boolean | undefined {
+): number | boolean | string | undefined {
   for (let i = scopes.length - 1; i >= 0; i--) {
     const scope = scopes[i];
     if (scope === undefined) continue;
@@ -378,7 +384,7 @@ function lookupSymbol(
 
 function resolveIntegerExpr(
   node: IntegerExprNode,
-  scopes: Map<string, number | boolean>[],
+  scopes: Map<string, number | boolean | string>[],
 ): ResolvedIntegerExpr {
   if (node.kind === "Identifier") {
     const value = lookupSymbol(scopes, node.name);
@@ -388,6 +394,11 @@ function resolveIntegerExpr(
     if (typeof value === "boolean") {
       throw new CompilerError(
         `Constant "${node.name}" is a boolean and cannot be used in an integer expression`,
+      );
+    }
+    if (typeof value === "string") {
+      throw new CompilerError(
+        `Constant "${node.name}" is a string and cannot be used in an integer expression`,
       );
     }
     return { kind: "IntegerLiteral", value };

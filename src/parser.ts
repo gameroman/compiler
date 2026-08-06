@@ -76,7 +76,7 @@ export interface ExpressionStatementNode {
 export interface ConstDeclNode {
   kind: "ConstDecl";
   name: string;
-  value: IntegerExprNode | BooleanLiteralNode;
+  value: StringLiteralNode | IntegerExprNode | BooleanLiteralNode;
 }
 
 export interface BlockStatementNode {
@@ -179,7 +179,11 @@ function parseExpression(state: ParserState): ExpressionNode {
 
 function parseConstValue(
   state: ParserState,
-): IntegerExprNode | BooleanLiteralNode {
+): StringLiteralNode | IntegerExprNode | BooleanLiteralNode {
+  if (peek(state).type === "STRING") {
+    const strToken = consume(state, "STRING");
+    return { kind: "StringLiteral", value: strToken.value };
+  }
   if (peek(state).type === "TRUE") {
     consume(state, "TRUE");
     return { kind: "BooleanLiteral", value: true };

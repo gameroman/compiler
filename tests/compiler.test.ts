@@ -623,6 +623,64 @@ describe("compileSourceToExecutable", () => {
     expect(() => compileSource("print(true + 1)")).toThrow(CompilerError);
   });
 
+  it("prints a string constant", () => {
+    const outputFile = compileSource('s = "hi"; print(s)');
+
+    runAndExpect(outputFile, "hi\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"f6fa5e623c0cdd84569cc6fc50bc168f431b515dff32da69a85f580d32d20149"`,
+    );
+  });
+
+  it("lets a string constant reference an earlier string constant", () => {
+    const outputFile = compileSource('s = "hi"; t = s; print(t)');
+
+    runAndExpect(outputFile, "hi\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"f6fa5e623c0cdd84569cc6fc50bc168f431b515dff32da69a85f580d32d20149"`,
+    );
+  });
+
+  it("prints a string constant declared inside a block", () => {
+    const outputFile = compileSource('{ s = "hi"; print(s) }');
+
+    runAndExpect(outputFile, "hi\r\n");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"f6fa5e623c0cdd84569cc6fc50bc168f431b515dff32da69a85f580d32d20149"`,
+    );
+  });
+
+  it("folds a string constant to the same binary as its literal", () => {
+    const folded = compileSource('s = "hi"; print(s)');
+    const literal = compileSource('print("hi")');
+
+    runAndExpect(folded, "hi\r\n");
+    runAndExpect(literal, "hi\r\n");
+
+    expectSameBinary(folded, literal);
+  });
+
+  it("rejects using a string constant in an integer expression", () => {
+    expect(() => compileSource('s = "hi"; print(s + 1)')).toThrow(
+      CompilerError,
+    );
+  });
+
+  it("rejects using a string constant in an integer constant", () => {
+    expect(() => compileSource('s = "hi"; t = s + 1; print(t)')).toThrow(
+      CompilerError,
+    );
+  });
+
   it("prints a constant declared inside a block", () => {
     const outputFile = compileSource("{ X = 5; print(X) }");
 
