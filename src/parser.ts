@@ -1,3 +1,4 @@
+import { CompilerError } from "./errors";
 import { Token, TokenType } from "./lexer";
 
 export interface StringLiteralNode {
@@ -58,7 +59,9 @@ export function parse(tokens: Token[]): ASTNode[] {
       consume(state, "RPAREN");
       ast.push({ kind: "PrintStatement", argument });
     } else {
-      throw new Error(`Unexpected token at root level: ${peek(state).type}`);
+      throw new CompilerError(
+        `Unexpected token at root level: ${peek(state).type}`,
+      );
     }
   }
 
@@ -72,7 +75,9 @@ function peek(state: ParserState): Token {
 function consume(state: ParserState, expectedType: TokenType): Token {
   const token = state.tokens[state.current];
   if (token.type !== expectedType) {
-    throw new Error(`Expected token ${expectedType}, got ${token.type}`);
+    throw new CompilerError(
+      `Expected token ${expectedType}, got ${token.type}`,
+    );
   }
   state.current++;
   return token;

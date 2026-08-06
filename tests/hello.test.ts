@@ -5,6 +5,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
+import { CompilerError } from "../src/errors";
 import { compileSourceToExecutable } from "../src/index";
 import type { CompileOptions } from "../src/index";
 
@@ -173,5 +174,13 @@ describe("compileSourceToExecutable", () => {
     const result = spawnSync(outputFile, [], { encoding: "utf8" });
     expect(result.status).toBe(0);
     expect(result.stdout).toBe("6\r\n");
+  });
+
+  it("rejects a string followed by an integer addition", () => {
+    expect(() => compileSource('print("abc" + 123)')).toThrow(CompilerError);
+  });
+
+  it("rejects an integer followed by a string addition", () => {
+    expect(() => compileSource('print(123 + "abc")')).toThrow(CompilerError);
   });
 });
