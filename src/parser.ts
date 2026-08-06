@@ -74,6 +74,13 @@ function parseExpression(state: ParserState): ExpressionNode {
     const strToken = consume(state, "STRING");
     return { kind: "StringLiteral", value: strToken.value };
   }
+  if (peek(state).type === "LPAREN") {
+    consume(state, "LPAREN");
+    const inner = parseExpression(state);
+    consume(state, "RPAREN");
+    if (inner.kind === "StringLiteral") return inner;
+    return parseAdditiveContinuation(state, inner);
+  }
   return parseAdditiveExpression(state);
 }
 
@@ -92,17 +99,30 @@ function consume(state: ParserState, expectedType: TokenType): Token {
   return token;
 }
 
-function parseTerm(state: ParserState): IntegerLiteralNode {
+function parseTerm(state: ParserState): IntegerExprNode {
+  if (peek(state).type === "LPAREN") {
+    consume(state, "LPAREN");
+    const inner = parseAdditiveExpression(state);
+    consume(state, "RPAREN");
+    return inner;
+  }
   const token = consume(state, "INTEGER");
   return { kind: "IntegerLiteral", value: Number(token.value) };
 }
 
 function parseAdditiveExpression(state: ParserState): IntegerExprNode {
-  let left: IntegerExprNode = parseTerm(state);
+  return parseAdditiveContinuation(state, parseTerm(state));
+}
+
+function parseAdditiveContinuation(
+  state: ParserState,
+  left: IntegerExprNode,
+): IntegerExprNode {
+  let result = left;
   while (peek(state).type === "PLUS") {
     consume(state, "PLUS");
     const right = parseTerm(state);
-    left = { kind: "BinaryExpr", operator: "+", left, right };
+    result = { kind: "BinaryExpr", operator: "+", left: result, right };
   }
-  return left;
+  return result;
 }

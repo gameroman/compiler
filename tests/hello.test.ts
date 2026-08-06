@@ -176,6 +176,80 @@ describe("compileSourceToExecutable", () => {
     expect(result.stdout).toBe("6\r\n");
   });
 
+  it("prints a parenthesized string literal", () => {
+    const outputFile = compileSource('print(("hi"))');
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"f6fa5e623c0cdd84569cc6fc50bc168f431b515dff32da69a85f580d32d20149"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("hi\r\n");
+  });
+
+  it("prints a doubly parenthesized string literal", () => {
+    const outputFile = compileSource('print((("hi")))');
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"f6fa5e623c0cdd84569cc6fc50bc168f431b515dff32da69a85f580d32d20149"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("hi\r\n");
+  });
+
+  it("prints a parenthesized addition", () => {
+    const outputFile = compileSource("print((1+2))");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"893e9a632c719b697a34b1575c4f72431b26d90f212c238914622925e63639a3"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("3\r\n");
+  });
+
+  it("prints parenthesized operands in an addition", () => {
+    const outputFile = compileSource("print((1)+(2))");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"893e9a632c719b697a34b1575c4f72431b26d90f212c238914622925e63639a3"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("3\r\n");
+  });
+
+  it("prints a doubly parenthesized addition", () => {
+    const outputFile = compileSource("print(((1)+(2)))");
+
+    const { size, hash } = fingerprint(outputFile);
+    expect(size).toMatchInlineSnapshot(`1536`);
+    expect(hash).toMatchInlineSnapshot(
+      `"893e9a632c719b697a34b1575c4f72431b26d90f212c238914622925e63639a3"`,
+    );
+
+    const result = spawnSync(outputFile, [], { encoding: "utf8" });
+    expect(result.status).toBe(0);
+    expect(result.stdout).toBe("3\r\n");
+  });
+
+  it("rejects a string inside an addition operand", () => {
+    expect(() => compileSource('print((1) + ("hi"))')).toThrow(CompilerError);
+  });
+
   it("compiles a bare semicolon as an empty program", () => {
     const outputFile = compileSource(";");
 
