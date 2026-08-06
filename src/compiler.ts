@@ -4,6 +4,7 @@ import { CompilerError } from "./errors";
 import { tokenize } from "./lexer";
 import { parse } from "./parser";
 import type {
+  ASTNode,
   IntegerExprNode,
   IntegerLiteralNode,
   ResolvedIntegerExpr,
@@ -58,37 +59,49 @@ export function compileSourceToExecutable(
   const ast = parse(tokens);
 
   const printStatements: ResolvedPrintStatement[] = [];
-  const symbols = new Map<string, number>();
-  for (const statement of ast) {
-    if (statement.kind === "ConstDecl") {
-      if (symbols.has(statement.name)) {
-        throw new CompilerError(
-          `Constant "${statement.name}" is already defined`,
-        );
-      }
-      const value = evalIntegerExpr(
-        resolveIntegerExpr(statement.value, symbols),
-      );
-      symbols.set(statement.name, value);
-    } else if (statement.kind === "PrintStatement") {
-      if (
-        statement.argument !== undefined &&
-        statement.argument.kind !== "StringLiteral"
-      ) {
-        printStatements.push({
-          kind: "PrintStatement",
-          argument: resolveIntegerExpr(statement.argument, symbols),
-        });
-      } else {
-        printStatements.push({
-          kind: "PrintStatement",
-          argument: statement.argument,
-        });
-      }
-    } else if (statement.argument.kind !== "StringLiteral") {
-      resolveIntegerExpr(statement.argument, symbols);
+  const scopes: Map<string, number>[] = [new Map()];
+  const declare = (name: string, value: number) => {
+    if (lookupSymbol(scopes, name) !== undefined) {
+      throw new CompilerError(`Constant "${name}" is already defined`);
     }
-  }
+    const scope = scopes[scopes.length - 1];
+    if (scope === undefined) {
+      throw new CompilerError("Internal error: empty scope stack");
+    }
+    scope.set(name, value);
+  };
+  const processStatements = (statements: ASTNode[]) => {
+    for (const statement of statements) {
+      if (statement.kind === "ConstDecl") {
+        declare(
+          statement.name,
+          evalIntegerExpr(resolveIntegerExpr(statement.value, scopes)),
+        );
+      } else if (statement.kind === "PrintStatement") {
+        if (
+          statement.argument !== undefined &&
+          statement.argument.kind !== "StringLiteral"
+        ) {
+          printStatements.push({
+            kind: "PrintStatement",
+            argument: resolveIntegerExpr(statement.argument, scopes),
+          });
+        } else {
+          printStatements.push({
+            kind: "PrintStatement",
+            argument: statement.argument,
+          });
+        }
+      } else if (statement.kind === "BlockStatement") {
+        scopes.push(new Map());
+        processStatements(statement.body);
+        scopes.pop();
+      } else if (statement.argument.kind !== "StringLiteral") {
+        resolveIntegerExpr(statement.argument, scopes);
+      }
+    }
+  };
+  processStatements(ast);
 
   // Allocate a contiguous region in .rdata for each string literal's payload
   // (value + EOL), starting at STRING_PAYLOAD.
@@ -316,12 +329,25 @@ function isIntegerLiteral(
   return node.kind === "IntegerLiteral";
 }
 
+function lookupSymbol(
+  scopes: Map<string, number>[],
+  name: string,
+): number | undefined {
+  for (let i = scopes.length - 1; i >= 0; i--) {
+    const scope = scopes[i];
+    if (scope === undefined) continue;
+    const value = scope.get(name);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
 function resolveIntegerExpr(
   node: IntegerExprNode,
-  symbols: Map<string, number>,
+  scopes: Map<string, number>[],
 ): ResolvedIntegerExpr {
   if (node.kind === "Identifier") {
-    const value = symbols.get(node.name);
+    const value = lookupSymbol(scopes, node.name);
     if (value === undefined) {
       throw new CompilerError(`Unknown identifier: ${node.name}`);
     }
@@ -332,14 +358,14 @@ function resolveIntegerExpr(
     return {
       kind: "UnaryExpr",
       operator: node.operator,
-      operand: resolveIntegerExpr(node.operand, symbols),
+      operand: resolveIntegerExpr(node.operand, scopes),
     };
   }
   return {
     kind: "BinaryExpr",
     operator: node.operator,
-    left: resolveIntegerExpr(node.left, symbols),
-    right: resolveIntegerExpr(node.right, symbols),
+    left: resolveIntegerExpr(node.left, scopes),
+    right: resolveIntegerExpr(node.right, scopes),
   };
 }
 

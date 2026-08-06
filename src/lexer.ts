@@ -10,6 +10,8 @@ export type TokenType =
   | "MUL"
   | "LPAREN"
   | "RPAREN"
+  | "LBRACE"
+  | "RBRACE"
   | "EQUAL"
   | "SEMICOLON"
   | "EOF";
@@ -40,6 +42,16 @@ export function tokenize(source: string): Token[] {
     }
     if (char === ")") {
       tokens.push({ type: "RPAREN", value: ")" });
+      i++;
+      continue;
+    }
+    if (char === "{") {
+      tokens.push({ type: "LBRACE", value: "{" });
+      i++;
+      continue;
+    }
+    if (char === "}") {
+      tokens.push({ type: "RBRACE", value: "}" });
       i++;
       continue;
     }

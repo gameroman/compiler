@@ -71,10 +71,16 @@ export interface ConstDeclNode {
   value: IntegerExprNode;
 }
 
+export interface BlockStatementNode {
+  kind: "BlockStatement";
+  body: ASTNode[];
+}
+
 export type ASTNode =
   | PrintStatementNode
   | ExpressionStatementNode
-  | ConstDeclNode;
+  | ConstDeclNode
+  | BlockStatementNode;
 
 interface ParserState {
   tokens: Token[];
@@ -83,40 +89,52 @@ interface ParserState {
 
 export function parse(tokens: Token[]): ASTNode[] {
   const state: ParserState = { tokens, current: 0 };
-  const ast: ASTNode[] = [];
+  return parseStatements(state, "EOF");
+}
 
-  while (peek(state).type !== "EOF") {
+function parseStatements(state: ParserState, terminator: TokenType): ASTNode[] {
+  const statements: ASTNode[] = [];
+  while (peek(state).type !== terminator) {
     if (peek(state).type === "SEMICOLON") {
       consume(state, "SEMICOLON");
       continue;
     }
-
-    if (peek(state).type === "PRINT") {
-      consume(state, "PRINT");
-      consume(state, "LPAREN");
-      const statement: PrintStatementNode = { kind: "PrintStatement" };
-      if (peek(state).type !== "RPAREN") {
-        statement.argument = parseExpression(state);
-      }
-      consume(state, "RPAREN");
-      ast.push(statement);
-    } else if (
-      peek(state).type === "IDENT" &&
-      peekNext(state)?.type === "EQUAL"
-    ) {
-      const nameToken = consume(state, "IDENT");
-      consume(state, "EQUAL");
-      const value = parseAdditiveExpression(state);
-      ast.push({ kind: "ConstDecl", name: nameToken.value, value });
-    } else {
-      ast.push({
-        kind: "ExpressionStatement",
-        argument: parseExpression(state),
-      });
-    }
+    statements.push(parseStatement(state));
   }
+  return statements;
+}
 
-  return ast;
+function parseStatement(state: ParserState): ASTNode {
+  if (peek(state).type === "PRINT") {
+    consume(state, "PRINT");
+    consume(state, "LPAREN");
+    const statement: PrintStatementNode = { kind: "PrintStatement" };
+    if (peek(state).type !== "RPAREN") {
+      statement.argument = parseExpression(state);
+    }
+    consume(state, "RPAREN");
+    return statement;
+  }
+  if (peek(state).type === "LBRACE") {
+    return parseBlock(state);
+  }
+  if (peek(state).type === "IDENT" && peekNext(state)?.type === "EQUAL") {
+    const nameToken = consume(state, "IDENT");
+    consume(state, "EQUAL");
+    const value = parseAdditiveExpression(state);
+    return { kind: "ConstDecl", name: nameToken.value, value };
+  }
+  return {
+    kind: "ExpressionStatement",
+    argument: parseExpression(state),
+  };
+}
+
+function parseBlock(state: ParserState): BlockStatementNode {
+  consume(state, "LBRACE");
+  const body = parseStatements(state, "RBRACE");
+  consume(state, "RBRACE");
+  return { kind: "BlockStatement", body };
 }
 
 function peekNext(state: ParserState): Token | undefined {
