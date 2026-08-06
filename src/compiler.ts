@@ -72,14 +72,9 @@ export function compileSourceToExecutable(
     }
     scope.set(name, value);
   };
-  const resolvePrintArgument = (
-    argument: ExpressionNode | undefined,
-  ):
-    | StringLiteralNode
-    | ResolvedIntegerExpr
-    | BooleanLiteralNode
-    | undefined => {
-    if (argument === undefined) return undefined;
+  const resolveExpression = (
+    argument: ExpressionNode,
+  ): StringLiteralNode | BooleanLiteralNode | ResolvedIntegerExpr => {
     if (
       argument.kind === "StringLiteral" ||
       argument.kind === "BooleanLiteral"
@@ -97,18 +92,23 @@ export function compileSourceToExecutable(
     }
     return resolveIntegerExpr(argument, scopes);
   };
+  const resolvePrintArgument = (
+    argument: ExpressionNode | undefined,
+  ):
+    | StringLiteralNode
+    | ResolvedIntegerExpr
+    | BooleanLiteralNode
+    | undefined => {
+    if (argument === undefined) return undefined;
+    return resolveExpression(argument);
+  };
   const resolveConstValue = (
-    value: StringLiteralNode | IntegerExprNode | BooleanLiteralNode,
+    value: ExpressionNode,
   ): number | boolean | string => {
-    if (value.kind === "BooleanLiteral") return value.value;
-    if (value.kind === "StringLiteral") return value.value;
-    if (value.kind === "Identifier") {
-      const resolved = lookupSymbol(scopes, value.name);
-      if (typeof resolved === "boolean" || typeof resolved === "string") {
-        return resolved;
-      }
-    }
-    return evalIntegerExpr(resolveIntegerExpr(value, scopes));
+    const resolved = resolveExpression(value);
+    if (resolved.kind === "BooleanLiteral") return resolved.value;
+    if (resolved.kind === "StringLiteral") return resolved.value;
+    return evalIntegerExpr(resolved);
   };
   const processStatements = (statements: ASTNode[]) => {
     for (const statement of statements) {
@@ -137,30 +137,30 @@ export function compileSourceToExecutable(
   // (value + EOL), starting at STRING_PAYLOAD.
   const stringPayloads: { rva: number; bytes: Uint8Array }[] = [];
   const ops: PrintOp[] = [];
+  const encoder = new TextEncoder();
   let nextPayloadRva = MEMORY_LAYOUT.STRING_PAYLOAD;
   for (const statement of printStatements) {
-    if (statement.argument === undefined) {
-      const bytes = new TextEncoder().encode(EOL_STRING[eol]);
-      stringPayloads.push({ rva: nextPayloadRva, bytes });
-      ops.push({ kind: "string", rva: nextPayloadRva, length: bytes.length });
-      nextPayloadRva += bytes.length;
-    } else if (statement.argument.kind === "StringLiteral") {
-      const bytes = new TextEncoder().encode(
-        statement.argument.value + EOL_STRING[eol],
-      );
-      stringPayloads.push({ rva: nextPayloadRva, bytes });
-      ops.push({ kind: "string", rva: nextPayloadRva, length: bytes.length });
-      nextPayloadRva += bytes.length;
-    } else if (statement.argument.kind === "BooleanLiteral") {
-      const bytes = new TextEncoder().encode(
-        (statement.argument.value ? "true" : "false") + EOL_STRING[eol],
-      );
-      stringPayloads.push({ rva: nextPayloadRva, bytes });
-      ops.push({ kind: "string", rva: nextPayloadRva, length: bytes.length });
-      nextPayloadRva += bytes.length;
-    } else {
-      ops.push({ kind: "integer", node: statement.argument });
+    const argument = statement.argument;
+    if (
+      argument !== undefined &&
+      argument.kind !== "StringLiteral" &&
+      argument.kind !== "BooleanLiteral"
+    ) {
+      ops.push({ kind: "integer", node: argument });
+      continue;
     }
+    let text: string;
+    if (argument === undefined) {
+      text = EOL_STRING[eol];
+    } else if (argument.kind === "StringLiteral") {
+      text = argument.value + EOL_STRING[eol];
+    } else {
+      text = (argument.value ? "true" : "false") + EOL_STRING[eol];
+    }
+    const bytes = encoder.encode(text);
+    stringPayloads.push({ rva: nextPayloadRva, bytes });
+    ops.push({ kind: "string", rva: nextPayloadRva, length: bytes.length });
+    nextPayloadRva += bytes.length;
   }
   if (nextPayloadRva > MEMORY_LAYOUT.SCRATCH_BUFFER) {
     throw new CompilerError("String payloads exceed available .rdata space");
@@ -250,7 +250,6 @@ export function compileSourceToExecutable(
 
   pe.padToAlignment(0x200);
 
-  if (!fs.existsSync("dist")) fs.mkdirSync("dist", { recursive: true });
   fs.writeFileSync(outputFile, pe.TrimmedBuffer);
 }
 
@@ -299,17 +298,13 @@ function compileIntegerPrint(
     MEMORY_LAYOUT.TEXT_RVA,
     MEMORY_LAYOUT.SCRATCH_BUFFER + SCRATCH_BUFFER_SIZE,
   );
-  if (eol === "lf") {
-    code.decRdi();
-    code.movByteRdiImm(0x0a);
-    code.movR8d32(1);
-  } else {
-    code.decRdi();
-    code.movByteRdiImm(0x0a);
+  code.decRdi();
+  code.movByteRdiImm(0x0a);
+  if (eol === "crlf") {
     code.decRdi();
     code.movByteRdiImm(0x0d);
-    code.movR8d32(2);
   }
+  code.movR8d32(eol === "lf" ? 1 : 2);
   if (negative) {
     // If rax is negative, negate it and remember the sign in rsi.
     code.xorRsiRsi();

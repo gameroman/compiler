@@ -23,62 +23,34 @@ export interface Token {
   value: string;
 }
 
+const SINGLE_CHAR_TOKENS: Record<string, TokenType> = {
+  "(": "LPAREN",
+  ")": "RPAREN",
+  "{": "LBRACE",
+  "}": "RBRACE",
+  ";": "SEMICOLON",
+  "+": "PLUS",
+  "-": "MINUS",
+  "*": "MUL",
+  "=": "EQUAL",
+};
+
 export function tokenize(source: string): Token[] {
   const tokens: Token[] = [];
   let i = 0;
 
   while (i < source.length) {
     const char = source[i];
+    if (char === undefined) break;
 
-    // Skip whitespace
-    if (char !== undefined && /\s/.test(char)) {
+    if (/\s/.test(char)) {
       i++;
       continue;
     }
 
-    // Match '(' and ')'
-    if (char === "(") {
-      tokens.push({ type: "LPAREN", value: "(" });
-      i++;
-      continue;
-    }
-    if (char === ")") {
-      tokens.push({ type: "RPAREN", value: ")" });
-      i++;
-      continue;
-    }
-    if (char === "{") {
-      tokens.push({ type: "LBRACE", value: "{" });
-      i++;
-      continue;
-    }
-    if (char === "}") {
-      tokens.push({ type: "RBRACE", value: "}" });
-      i++;
-      continue;
-    }
-    if (char === ";") {
-      tokens.push({ type: "SEMICOLON", value: ";" });
-      i++;
-      continue;
-    }
-    if (char === "+") {
-      tokens.push({ type: "PLUS", value: "+" });
-      i++;
-      continue;
-    }
-    if (char === "-") {
-      tokens.push({ type: "MINUS", value: "-" });
-      i++;
-      continue;
-    }
-    if (char === "*") {
-      tokens.push({ type: "MUL", value: "*" });
-      i++;
-      continue;
-    }
-    if (char === "=") {
-      tokens.push({ type: "EQUAL", value: "=" });
+    const tokenType = SINGLE_CHAR_TOKENS[char];
+    if (tokenType !== undefined) {
+      tokens.push({ type: tokenType, value: char });
       i++;
       continue;
     }
@@ -100,7 +72,7 @@ export function tokenize(source: string): Token[] {
     }
 
     // Match Integer Literals: 42
-    if (char !== undefined && /[0-9]/.test(char)) {
+    if (/[0-9]/.test(char)) {
       let value = "";
       while (i < source.length) {
         const next = source[i];
@@ -113,7 +85,7 @@ export function tokenize(source: string): Token[] {
     }
 
     // Match Keywords / Identifiers: print
-    if (char !== undefined && /[a-zA-Z_]/.test(char)) {
+    if (/[a-zA-Z_]/.test(char)) {
       let ident = "";
       while (i < source.length) {
         const next = source[i];

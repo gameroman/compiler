@@ -163,15 +163,10 @@ export class CodeBuilder {
     this.bytes.push(0x31, 0xc9);
   }
 
-  writeBytes(bytes: number[]) {
-    this.bytes.push(...bytes);
-  }
-
   movStackParamZero() {
     this.bytes.push(0x48, 0xc7, 0x44, 0x24, 0x20, 0x00, 0x00, 0x00, 0x00);
   }
 
-  // FIX: Calculate displacement using current instruction length (7 bytes)
   leaRipRelative(
     reg: (typeof Register)[keyof typeof Register],
     textSectionRva: number,
@@ -191,7 +186,6 @@ export class CodeBuilder {
     this.push32(displacement);
   }
 
-  // FIX: Calculate displacement using current instruction length (6 bytes)
   callImport(textSectionRva: number, targetIatRva: number) {
     const instructionOffset = this.length;
     const ripAtNextInstruction = textSectionRva + instructionOffset + 6;
