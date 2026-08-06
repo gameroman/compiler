@@ -1,5 +1,5 @@
 import { CompilerError } from "./errors";
-import { Token, TokenType } from "./lexer";
+import type { Token, TokenType } from "./lexer";
 
 export interface StringLiteralNode {
   kind: "StringLiteral";
@@ -24,8 +24,21 @@ export interface IdentifierNode {
 
 export type ResolvedIntegerExpr =
   | IntegerLiteralNode
-  | BinaryExprNode
-  | UnaryExprNode;
+  | ResolvedBinaryExprNode
+  | ResolvedUnaryExprNode;
+
+export interface ResolvedBinaryExprNode {
+  kind: "BinaryExpr";
+  operator: "+" | "-" | "*";
+  left: ResolvedIntegerExpr;
+  right: ResolvedIntegerExpr;
+}
+
+export interface ResolvedUnaryExprNode {
+  kind: "UnaryExpr";
+  operator: "-" | "+";
+  operand: ResolvedIntegerExpr;
+}
 
 export interface BinaryExprNode {
   kind: "BinaryExpr";
@@ -89,7 +102,7 @@ export function parse(tokens: Token[]): ASTNode[] {
       ast.push(statement);
     } else if (
       peek(state).type === "IDENT" &&
-      peekNext(state).type === "EQUAL"
+      peekNext(state)?.type === "EQUAL"
     ) {
       const nameToken = consume(state, "IDENT");
       consume(state, "EQUAL");
@@ -106,7 +119,7 @@ export function parse(tokens: Token[]): ASTNode[] {
   return ast;
 }
 
-function peekNext(state: ParserState): Token {
+function peekNext(state: ParserState): Token | undefined {
   return state.tokens[state.current + 1];
 }
 
@@ -129,11 +142,18 @@ function parseExpression(state: ParserState): ExpressionNode {
 }
 
 function peek(state: ParserState): Token {
-  return state.tokens[state.current];
+  const token = state.tokens[state.current];
+  if (token === undefined) {
+    throw new CompilerError("Unexpected end of input");
+  }
+  return token;
 }
 
 function consume(state: ParserState, expectedType: TokenType): Token {
   const token = state.tokens[state.current];
+  if (token === undefined) {
+    throw new CompilerError("Unexpected end of input");
+  }
   if (token.type !== expectedType) {
     throw new CompilerError(
       `Expected token ${expectedType}, got ${token.type}`,

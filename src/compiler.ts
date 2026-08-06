@@ -6,8 +6,8 @@ import { parse } from "./parser";
 import type {
   IntegerExprNode,
   IntegerLiteralNode,
-  PrintStatementNode,
   ResolvedIntegerExpr,
+  StringLiteralNode,
 } from "./parser";
 import { PEBuilder } from "./pe-builder";
 import { CodeBuilder, Register } from "./x86-64";
@@ -41,7 +41,12 @@ const EOL_STRING: Record<Eol, string> = {
 
 type PrintOp =
   | { kind: "string"; rva: number; length: number }
-  | { kind: "integer"; node: IntegerExprNode };
+  | { kind: "integer"; node: ResolvedIntegerExpr };
+
+interface ResolvedPrintStatement {
+  kind: "PrintStatement";
+  argument?: StringLiteralNode | ResolvedIntegerExpr;
+}
 
 export function compileSourceToExecutable(
   sourceCode: string,
@@ -52,7 +57,7 @@ export function compileSourceToExecutable(
   const tokens = tokenize(sourceCode);
   const ast = parse(tokens);
 
-  const printStatements: PrintStatementNode[] = [];
+  const printStatements: ResolvedPrintStatement[] = [];
   const symbols = new Map<string, number>();
   for (const statement of ast) {
     if (statement.kind === "ConstDecl") {
@@ -75,7 +80,10 @@ export function compileSourceToExecutable(
           argument: resolveIntegerExpr(statement.argument, symbols),
         });
       } else {
-        printStatements.push(statement);
+        printStatements.push({
+          kind: "PrintStatement",
+          argument: statement.argument,
+        });
       }
     } else if (statement.argument.kind !== "StringLiteral") {
       resolveIntegerExpr(statement.argument, symbols);
@@ -220,7 +228,7 @@ function compileStringPrint(
 
 function compileIntegerPrint(
   code: CodeBuilder,
-  node: IntegerExprNode,
+  node: ResolvedIntegerExpr,
   eol: Eol,
 ) {
   // 1. GetStdHandle(-11) -> rbx
@@ -292,7 +300,7 @@ function compileIntegerPrint(
   code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_WRITE_FILE);
 }
 
-function mayBeNegative(node: IntegerExprNode): boolean {
+function mayBeNegative(node: ResolvedIntegerExpr): boolean {
   if (node.kind === "IntegerLiteral") return node.value < 0;
   if (node.kind === "UnaryExpr") return true;
   return (
@@ -302,7 +310,9 @@ function mayBeNegative(node: IntegerExprNode): boolean {
   );
 }
 
-function isIntegerLiteral(node: IntegerExprNode): node is IntegerLiteralNode {
+function isIntegerLiteral(
+  node: ResolvedIntegerExpr,
+): node is IntegerLiteralNode {
   return node.kind === "IntegerLiteral";
 }
 
@@ -333,12 +343,7 @@ function resolveIntegerExpr(
   };
 }
 
-function evalIntegerExpr(node: IntegerExprNode): number {
-  if (node.kind === "Identifier") {
-    throw new CompilerError(
-      `Unexpected identifier "${node.name}" in expression`,
-    );
-  }
+function evalIntegerExpr(node: ResolvedIntegerExpr): number {
   if (node.kind === "IntegerLiteral") return node.value;
   if (node.kind === "UnaryExpr") {
     const operand = evalIntegerExpr(node.operand);
@@ -351,7 +356,10 @@ function evalIntegerExpr(node: IntegerExprNode): number {
   return left * right;
 }
 
-function compileIntegerExpression(code: CodeBuilder, node: IntegerExprNode) {
+function compileIntegerExpression(
+  code: CodeBuilder,
+  node: ResolvedIntegerExpr,
+) {
   if (node.kind === "IntegerLiteral") {
     code.movRaxImm32(node.value);
     return;

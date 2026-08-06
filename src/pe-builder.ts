@@ -30,7 +30,7 @@ export class PEBuilder {
   }
 
   writeString(str: string) {
-    const encoded = new TextEncoder().encode(str + "\0");
+    const encoded = new TextEncoder().encode(`${str}\0`);
     this.writeBytes(encoded);
   }
 

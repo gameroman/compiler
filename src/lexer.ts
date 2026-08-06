@@ -27,7 +27,7 @@ export function tokenize(source: string): Token[] {
     const char = source[i];
 
     // Skip whitespace
-    if (/\s/.test(char)) {
+    if (char !== undefined && /\s/.test(char)) {
       i++;
       continue;
     }
@@ -99,10 +99,12 @@ export function tokenize(source: string): Token[] {
     }
 
     // Match Keywords / Identifiers: print
-    if (/[a-zA-Z_]/.test(char)) {
+    if (char !== undefined && /[a-zA-Z_]/.test(char)) {
       let ident = "";
-      while (i < source.length && /[a-zA-Z0-9_]/.test(source[i])) {
-        ident += source[i];
+      while (i < source.length) {
+        const next = source[i];
+        if (next === undefined || !/[a-zA-Z0-9_]/.test(next)) break;
+        ident += next;
         i++;
       }
       if (ident === "print") {
