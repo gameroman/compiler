@@ -5,6 +5,7 @@ import { CompilerError } from "#src/errors";
 import {
   cleanupCreatedFiles,
   compileSource,
+  expectCompilesTo,
   fingerprint,
   runAndExpect,
 } from "./helpers";
@@ -47,27 +48,11 @@ describe("compileSourceToExecutable", () => {
   });
 
   it("compiles a bare string expression statement", () => {
-    const outputFile = compileSource('"hello"');
-
-    runAndExpect(outputFile, "");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"08db888a9aa76055731ce8227c2bce5bee9d1c8b2c1fbe53efe3a027c57fd662"`,
-    );
+    expectCompilesTo('"hello"', ";");
   });
 
   it("compiles a bare integer expression statement", () => {
-    const outputFile = compileSource("1 + 2");
-
-    runAndExpect(outputFile, "");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"08db888a9aa76055731ce8227c2bce5bee9d1c8b2c1fbe53efe3a027c57fd662"`,
-    );
+    expectCompilesTo("1 + 2", ";");
   });
 
   it("rejects a string followed by an integer addition", () => {

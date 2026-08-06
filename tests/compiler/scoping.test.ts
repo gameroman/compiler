@@ -5,6 +5,7 @@ import { CompilerError } from "#src/errors";
 import {
   cleanupCreatedFiles,
   compileSource,
+  expectCompilesTo,
   fingerprint,
   runAndExpect,
 } from "./helpers";
@@ -25,15 +26,7 @@ describe("compileSourceToExecutable", () => {
   });
 
   it("sees outer constants inside a block", () => {
-    const outputFile = compileSource("X = 5; { print(X) }");
-
-    runAndExpect(outputFile, "5\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"1a97d8c031f0bfdb61f7961359218ead1c7111e2ecaafdaf6407cbf437b6cc5f"`,
-    );
+    expectCompilesTo("X = 5; { print(X) }", "print(5)");
   });
 
   it("allows redeclaring a constant after its block closes", () => {
@@ -73,15 +66,7 @@ describe("compileSourceToExecutable", () => {
   });
 
   it("supports a constant declared after a nested block", () => {
-    const outputFile = compileSource("{ X = 1; { A = 2 } }; C = 3; print(C)");
-
-    runAndExpect(outputFile, "3\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"33001d64cd13b259a887982a14d3da2c791e85d1aae1889850a845980016b8d8"`,
-    );
+    expectCompilesTo("{ X = 1; { A = 2 } }; C = 3; print(C)", "print(3)");
   });
 
   it("compiles an empty block", () => {

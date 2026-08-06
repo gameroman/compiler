@@ -3,7 +3,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import {
   cleanupCreatedFiles,
   compileSource,
-  expectSameBinary,
+  expectCompilesTo,
   fingerprint,
   runAndExpect,
 } from "./helpers";
@@ -48,14 +48,9 @@ describe("compileSourceToExecutable", () => {
   });
 
   it("prints multiple statements separated by semicolons", () => {
-    const outputFile = compileSource('print("hello"); print("world")');
-
-    runAndExpect(outputFile, "hello\r\nworld\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"cfd3121cd78ea9ab98c02b41baf25da4dc5d8d6d3d6d147a50988a8728b3b1bc"`,
+    expectCompilesTo(
+      'print("hello"); print("world")',
+      'print("hello")\nprint("world")',
     );
   });
 
@@ -120,13 +115,7 @@ describe("compileSourceToExecutable", () => {
   });
 
   it("folds a constant expression to the same binary as its literal", () => {
-    const folded = compileSource("print(1 + 2)");
-    const literal = compileSource("print(3)");
-
-    runAndExpect(folded, "3\r\n");
-    runAndExpect(literal, "3\r\n");
-
-    expectSameBinary(folded, literal);
+    expectCompilesTo("print(1 + 2)", "print(3)");
   });
 
   it("keeps 64-bit precision when a folded result overflows 32 bits", () => {
@@ -154,75 +143,27 @@ describe("compileSourceToExecutable", () => {
   });
 
   it("prints a parenthesized string literal", () => {
-    const outputFile = compileSource('print(("hi"))');
-
-    runAndExpect(outputFile, "hi\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"f6fa5e623c0cdd84569cc6fc50bc168f431b515dff32da69a85f580d32d20149"`,
-    );
+    expectCompilesTo('print(("hi"))', 'print("hi")');
   });
 
   it("prints a doubly parenthesized string literal", () => {
-    const outputFile = compileSource('print((("hi")))');
-
-    runAndExpect(outputFile, "hi\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"f6fa5e623c0cdd84569cc6fc50bc168f431b515dff32da69a85f580d32d20149"`,
-    );
+    expectCompilesTo('print((("hi")))', 'print("hi")');
   });
 
   it("prints a parenthesized addition", () => {
-    const outputFile = compileSource("print((1+2))");
-
-    runAndExpect(outputFile, "3\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"33001d64cd13b259a887982a14d3da2c791e85d1aae1889850a845980016b8d8"`,
-    );
+    expectCompilesTo("print((1+2))", "print(3)");
   });
 
   it("prints parenthesized operands in an addition", () => {
-    const outputFile = compileSource("print((1)+(2))");
-
-    runAndExpect(outputFile, "3\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"33001d64cd13b259a887982a14d3da2c791e85d1aae1889850a845980016b8d8"`,
-    );
+    expectCompilesTo("print((1)+(2))", "print(3)");
   });
 
   it("prints a doubly parenthesized addition", () => {
-    const outputFile = compileSource("print(((1)+(2)))");
-
-    runAndExpect(outputFile, "3\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"33001d64cd13b259a887982a14d3da2c791e85d1aae1889850a845980016b8d8"`,
-    );
+    expectCompilesTo("print(((1)+(2)))", "print(3)");
   });
 
   it("prints the result of a multiplication", () => {
-    const outputFile = compileSource("print(2 * 3)");
-
-    runAndExpect(outputFile, "6\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"34c12a80647a1c69deea7685139665a5ccb92b8e1a23b86550c3814db3121db2"`,
-    );
+    expectCompilesTo("print(2 * 3)", "print(6)");
   });
 
   it("prints a left-associative multiplication chain", () => {
@@ -286,27 +227,11 @@ describe("compileSourceToExecutable", () => {
   });
 
   it("prints the result of a subtraction", () => {
-    const outputFile = compileSource("print(10 - 3)");
-
-    runAndExpect(outputFile, "7\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"4ff9b97fd3f6d725978c6aa8589bd86d0dea6d1863e82a6f6063bdcb62a37eed"`,
-    );
+    expectCompilesTo("print(10 - 3)", "print(7)");
   });
 
   it("prints a left-associative subtraction chain", () => {
-    const outputFile = compileSource("print(10 - 3 - 2)");
-
-    runAndExpect(outputFile, "5\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"1a97d8c031f0bfdb61f7961359218ead1c7111e2ecaafdaf6407cbf437b6cc5f"`,
-    );
+    expectCompilesTo("print(10 - 3 - 2)", "print(5)");
   });
 
   it("mixes addition and subtraction left-associatively", () => {
@@ -346,39 +271,15 @@ describe("compileSourceToExecutable", () => {
   });
 
   it("prints a positive literal via unary plus", () => {
-    const outputFile = compileSource("print(+5)");
-
-    runAndExpect(outputFile, "5\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"1a97d8c031f0bfdb61f7961359218ead1c7111e2ecaafdaf6407cbf437b6cc5f"`,
-    );
+    expectCompilesTo("print(+5)", "print(5)");
   });
 
   it("applies unary minus to a group", () => {
-    const outputFile = compileSource("print(-(2 + 3))");
-
-    runAndExpect(outputFile, "-5\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"0ba8f524ab9c41862c727c22ddb30f7bbec7ee388c7e6927ec9cc01f4530b446"`,
-    );
+    expectCompilesTo("print(-(2 + 3))", "print(-5)");
   });
 
   it("subtracts a negative operand", () => {
-    const outputFile = compileSource("print(1 - -2)");
-
-    runAndExpect(outputFile, "3\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"33001d64cd13b259a887982a14d3da2c791e85d1aae1889850a845980016b8d8"`,
-    );
+    expectCompilesTo("print(1 - -2)", "print(3)");
   });
 
   it("multiplies by a negative operand", () => {
@@ -406,50 +307,18 @@ describe("compileSourceToExecutable", () => {
   });
 
   it("folds a constant expression into a constant", () => {
-    const outputFile = compileSource("X = 1 + 2; print(X)");
-
-    runAndExpect(outputFile, "3\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"33001d64cd13b259a887982a14d3da2c791e85d1aae1889850a845980016b8d8"`,
-    );
+    expectCompilesTo("X = 1 + 2; print(X)", "print(3)");
   });
 
   it("lets constants reference earlier constants", () => {
-    const outputFile = compileSource("X = 2; Y = X * 3; print(Y)");
-
-    runAndExpect(outputFile, "6\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"34c12a80647a1c69deea7685139665a5ccb92b8e1a23b86550c3814db3121db2"`,
-    );
+    expectCompilesTo("X = 2; Y = X * 3; print(Y)", "print(6)");
   });
 
   it("prints a negative constant", () => {
-    const outputFile = compileSource("X = -5; print(X)");
-
-    runAndExpect(outputFile, "-5\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"0ba8f524ab9c41862c727c22ddb30f7bbec7ee388c7e6927ec9cc01f4530b446"`,
-    );
+    expectCompilesTo("X = -5; print(X)", "print(-5)");
   });
 
   it("uses a constant inside an expression", () => {
-    const outputFile = compileSource("X = 10; print(X - 4)");
-
-    runAndExpect(outputFile, "6\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"34c12a80647a1c69deea7685139665a5ccb92b8e1a23b86550c3814db3121db2"`,
-    );
+    expectCompilesTo("X = 10; print(X - 4)", "print(6)");
   });
 });

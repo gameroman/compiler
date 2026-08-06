@@ -73,6 +73,13 @@ export function compileSourceToExecutable(
   outputFile: string,
   options: CompileOptions = {},
 ) {
+  fs.writeFileSync(outputFile, compileSourceToBytes(sourceCode, options));
+}
+
+export function compileSourceToBytes(
+  sourceCode: string,
+  options: CompileOptions = {},
+): Uint8Array {
   const eol = options.eol ?? "crlf";
   const tokens = tokenize(sourceCode);
   const ast = parse(tokens);
@@ -303,7 +310,7 @@ export function compileSourceToExecutable(
 
   pe.padToAlignment(0x200);
 
-  fs.writeFileSync(outputFile, pe.TrimmedBuffer);
+  return pe.TrimmedBuffer;
 }
 
 function compileStringPrint(
