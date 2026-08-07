@@ -129,11 +129,12 @@ export class PEBuilder {
     this.writeU32(0x60000020);
 
     // .rdata Section Header
+    const alignedDataSize = Math.ceil(dataSize / 0x200) * 0x200;
     this.seek(0x1b0);
     this.writeBytes([0x2e, 0x72, 0x64, 0x61, 0x74, 0x00, 0x00, 0x00]);
-    this.writeU32(0x200);
+    this.writeU32(dataSize);
     this.writeU32(0x2000);
-    this.writeU32(0x200);
+    this.writeU32(alignedDataSize);
     this.writeU32(0x400);
     this.writeU32(0);
     this.writeU32(0);

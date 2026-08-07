@@ -13,6 +13,7 @@ export type TokenType =
   | "LBRACE"
   | "RBRACE"
   | "EQUAL"
+  | "COLONEQUAL"
   | "EQEQ"
   | "NOTEQ"
   | "BANG"
@@ -21,6 +22,8 @@ export type TokenType =
   | "FALSE"
   | "IF"
   | "ELSE"
+  | "CONST"
+  | "LET"
   | "EOF";
 
 export interface Token {
@@ -44,6 +47,7 @@ const SINGLE_CHAR_TOKENS: Record<string, TokenType> = {
 const TWO_CHAR_TOKENS: Record<string, TokenType> = {
   "==": "EQEQ",
   "!=": "NOTEQ",
+  ":=": "COLONEQUAL",
 };
 
 export function tokenize(source: string): Token[] {
@@ -122,6 +126,10 @@ export function tokenize(source: string): Token[] {
         tokens.push({ type: "IF", value: "if" });
       } else if (ident === "else") {
         tokens.push({ type: "ELSE", value: "else" });
+      } else if (ident === "const") {
+        tokens.push({ type: "CONST", value: "const" });
+      } else if (ident === "let") {
+        tokens.push({ type: "LET", value: "let" });
       } else {
         tokens.push({ type: "IDENT", value: ident });
       }

@@ -5,32 +5,37 @@ import { tokenize } from "./lexer";
 import { parse } from "./parser";
 import type {
   ASTNode,
-  BooleanLiteralNode,
+  BlockStatementNode,
   ExpressionNode,
+  IfStatementNode,
   IntegerExprNode,
-  IntegerLiteralNode,
-  StringLiteralNode,
+  PrintStatementNode,
 } from "./parser";
 import { PEBuilder } from "./pe-builder";
 import { CodeBuilder, Register } from "./x86-64";
 
-type ResolvedIntegerExpr =
-  | IntegerLiteralNode
-  | ResolvedBinaryExprNode
-  | ResolvedUnaryExprNode;
+type ValueType = "number" | "boolean" | "string";
 
-interface ResolvedBinaryExprNode {
-  kind: "BinaryExpr";
-  operator: "+" | "-" | "*";
-  left: ResolvedIntegerExpr;
-  right: ResolvedIntegerExpr;
+type Value = number | boolean | string;
+
+interface ConstBinding {
+  kind: "const";
+  value: Value;
 }
 
-interface ResolvedUnaryExprNode {
-  kind: "UnaryExpr";
-  operator: "-" | "+";
-  operand: ResolvedIntegerExpr;
+interface RuntimeBinding {
+  kind: "runtime";
+  type: ValueType;
+  slotRva: number;
 }
+
+interface MutableBinding {
+  kind: "mutable";
+  type: ValueType;
+  slotRva: number;
+}
+
+type Binding = ConstBinding | RuntimeBinding | MutableBinding;
 
 const MEMORY_LAYOUT = {
   TEXT_RVA: 0x1000,
@@ -44,6 +49,8 @@ const MEMORY_LAYOUT = {
   IAT_EXIT_PROCESS: 0x2058,
   STRING_PAYLOAD: 0x20b0,
   SCRATCH_BUFFER: 0x20f0,
+  VAR_START: 0x2110,
+  VAR_END: 0x2800,
 };
 
 const SCRATCH_BUFFER_SIZE = 32;
@@ -59,15 +66,6 @@ const EOL_STRING: Record<Eol, string> = {
   lf: "\n",
 };
 
-type PrintOp =
-  | { kind: "string"; rva: number; length: number }
-  | { kind: "integer"; node: ResolvedIntegerExpr };
-
-interface ResolvedPrintStatement {
-  kind: "PrintStatement";
-  argument?: StringLiteralNode | ResolvedIntegerExpr | BooleanLiteralNode;
-}
-
 export function compileSourceToExecutable(
   sourceCode: string,
   outputFile: string,
@@ -81,170 +79,634 @@ export function compileSourceToBytes(
   options: CompileOptions = {},
 ): Uint8Array {
   const eol = options.eol ?? "crlf";
+  const eolString = EOL_STRING[eol];
   const tokens = tokenize(sourceCode);
   const ast = parse(tokens);
-
-  const printStatements: ResolvedPrintStatement[] = [];
-  const scopes: Map<string, number | boolean | string>[] = [new Map()];
-  const declare = (name: string, value: number | boolean | string) => {
-    if (lookupSymbol(scopes, name) !== undefined) {
-      throw new CompilerError(`Constant "${name}" is already defined`);
-    }
-    const scope = scopes[scopes.length - 1];
-    if (scope === undefined) {
-      throw new CompilerError("Internal error: empty scope stack");
-    }
-    scope.set(name, value);
-  };
-  const resolveExpression = (
-    argument: ExpressionNode,
-  ): StringLiteralNode | BooleanLiteralNode | ResolvedIntegerExpr => {
-    if (
-      argument.kind === "StringLiteral" ||
-      argument.kind === "BooleanLiteral"
-    ) {
-      return argument;
-    }
-    if (argument.kind === "Identifier") {
-      const value = lookupSymbol(scopes, argument.name);
-      if (typeof value === "boolean") {
-        return { kind: "BooleanLiteral", value };
-      }
-      if (typeof value === "string") {
-        return { kind: "StringLiteral", value };
-      }
-    }
-    if (argument.kind === "ComparisonExpr") {
-      const left = resolveConstValue(argument.left);
-      const right = resolveConstValue(argument.right);
-      if (typeof left !== typeof right) {
-        throw new CompilerError(
-          `Cannot compare ${typeof left} with ${typeof right}`,
-        );
-      }
-      return {
-        kind: "BooleanLiteral",
-        value: argument.operator === "==" ? left === right : left !== right,
-      };
-    }
-    if (argument.kind === "NotExpr") {
-      const operand = resolveExpression(argument.operand);
-      if (operand.kind === "StringLiteral") {
-        throw new CompilerError("Cannot negate a string");
-      }
-      if (operand.kind !== "BooleanLiteral") {
-        throw new CompilerError("Cannot negate an integer");
-      }
-      return { kind: "BooleanLiteral", value: !operand.value };
-    }
-    return resolveIntegerExpr(argument, scopes);
-  };
-  const resolvePrintArgument = (
-    argument: ExpressionNode | undefined,
-  ):
-    | StringLiteralNode
-    | ResolvedIntegerExpr
-    | BooleanLiteralNode
-    | undefined => {
-    if (argument === undefined) return undefined;
-    return resolveExpression(argument);
-  };
-  const resolveConstValue = (
-    value: ExpressionNode,
-  ): number | boolean | string => {
-    const resolved = resolveExpression(value);
-    if (resolved.kind === "BooleanLiteral") return resolved.value;
-    if (resolved.kind === "StringLiteral") return resolved.value;
-    return evalIntegerExpr(resolved);
-  };
-  const processStatements = (statements: ASTNode[]) => {
-    for (const statement of statements) {
-      if (statement.kind === "ConstDecl") {
-        declare(statement.name, resolveConstValue(statement.value));
-      } else if (statement.kind === "PrintStatement") {
-        printStatements.push({
-          kind: "PrintStatement",
-          argument: resolvePrintArgument(statement.argument),
-        });
-      } else if (statement.kind === "BlockStatement") {
-        scopes.push(new Map());
-        processStatements(statement.body);
-        scopes.pop();
-      } else if (statement.kind === "IfStatement") {
-        const condition = resolveExpression(statement.condition);
-        if (condition.kind !== "BooleanLiteral") {
-          throw new CompilerError("An if condition must be a boolean");
-        }
-        const branch = condition.value
-          ? statement.thenBlock
-          : statement.elseBranch;
-        if (branch === undefined) continue;
-        if (branch.kind === "BlockStatement") {
-          scopes.push(new Map());
-          processStatements(branch.body);
-          scopes.pop();
-        } else {
-          processStatements([branch]);
-        }
-      } else {
-        resolveExpression(statement.argument);
-      }
-    }
-  };
-  processStatements(ast);
-
-  // Allocate a contiguous region in .rdata for each string literal's payload
-  // (value + EOL), starting at STRING_PAYLOAD.
-  const stringPayloads: { rva: number; bytes: Uint8Array }[] = [];
-  const ops: PrintOp[] = [];
-  const encoder = new TextEncoder();
-  let nextPayloadRva = MEMORY_LAYOUT.STRING_PAYLOAD;
-  for (const statement of printStatements) {
-    const argument = statement.argument;
-    if (
-      argument !== undefined &&
-      argument.kind !== "StringLiteral" &&
-      argument.kind !== "BooleanLiteral"
-    ) {
-      ops.push({ kind: "integer", node: argument });
-      continue;
-    }
-    let text: string;
-    if (argument === undefined) {
-      text = EOL_STRING[eol];
-    } else if (argument.kind === "StringLiteral") {
-      text = argument.value + EOL_STRING[eol];
-    } else {
-      text = (argument.value ? "true" : "false") + EOL_STRING[eol];
-    }
-    const bytes = encoder.encode(text);
-    stringPayloads.push({ rva: nextPayloadRva, bytes });
-    ops.push({ kind: "string", rva: nextPayloadRva, length: bytes.length });
-    nextPayloadRva += bytes.length;
-  }
-  if (nextPayloadRva > MEMORY_LAYOUT.SCRATCH_BUFFER) {
-    throw new CompilerError("String payloads exceed available .rdata space");
-  }
 
   const code = new CodeBuilder();
   code.subRsp(56);
 
-  for (const op of ops) {
-    if (op.kind === "string") {
-      compileStringPrint(code, op.rva, op.length);
-    } else {
-      compileIntegerPrint(code, op.node, eol);
+  const encoder = new TextEncoder();
+  const payloads = new Map<
+    string,
+    { rva: number; length: number; bytes: Uint8Array }
+  >();
+  let nextPayloadRva = MEMORY_LAYOUT.STRING_PAYLOAD;
+  const intern = (text: string) => {
+    const existing = payloads.get(text);
+    if (existing !== undefined) {
+      return { rva: existing.rva, length: existing.length };
     }
-  }
+    const bytes = encoder.encode(text);
+    if (nextPayloadRva + bytes.length > MEMORY_LAYOUT.SCRATCH_BUFFER) {
+      throw new CompilerError("String payloads exceed available .rdata space");
+    }
+    const rva = nextPayloadRva;
+    nextPayloadRva += bytes.length;
+    payloads.set(text, { rva, length: bytes.length, bytes });
+    return { rva, length: bytes.length };
+  };
 
-  // ExitProcess(0)
+  let nextSlotRva = MEMORY_LAYOUT.VAR_START;
+  const allocateSlot = (bytes: number): number => {
+    const rva = nextSlotRva;
+    nextSlotRva += bytes;
+    if (nextSlotRva > MEMORY_LAYOUT.VAR_END) {
+      throw new CompilerError(
+        "Too many variables: .rdata variable space exhausted",
+      );
+    }
+    return rva;
+  };
+
+  const scopes: Map<string, Binding>[] = [new Map()];
+  const lookupSymbol = (name: string): Binding | undefined => {
+    for (let i = scopes.length - 1; i >= 0; i--) {
+      const scope = scopes[i];
+      if (scope === undefined) continue;
+      const binding = scope.get(name);
+      if (binding !== undefined) return binding;
+    }
+    return undefined;
+  };
+
+  const typeOfExpression = (node: ExpressionNode): ValueType => {
+    switch (node.kind) {
+      case "StringLiteral":
+        return "string";
+      case "BooleanLiteral":
+        return "boolean";
+      case "IntegerLiteral":
+        return "number";
+      case "BinaryExpr":
+      case "UnaryExpr":
+        return "number";
+      case "ComparisonExpr":
+      case "NotExpr":
+        return "boolean";
+      case "Identifier": {
+        const binding = lookupSymbol(node.name);
+        if (binding === undefined) {
+          throw new CompilerError(`Unknown identifier: ${node.name}`);
+        }
+        if (binding.kind === "const") {
+          return typeof binding.value as ValueType;
+        }
+        return binding.type;
+      }
+    }
+  };
+
+  const foldIntegerValue = (node: IntegerExprNode): number | null => {
+    if (node.kind === "IntegerLiteral") return node.value;
+    if (node.kind === "Identifier") {
+      const binding = lookupSymbol(node.name);
+      if (binding === undefined) {
+        throw new CompilerError(`Unknown identifier: ${node.name}`);
+      }
+      if (binding.kind !== "const") return null;
+      if (typeof binding.value === "boolean") {
+        throw new CompilerError(
+          `Constant "${node.name}" is a boolean and cannot be used in an integer expression`,
+        );
+      }
+      if (typeof binding.value === "string") {
+        throw new CompilerError(
+          `Constant "${node.name}" is a string and cannot be used in an integer expression`,
+        );
+      }
+      return binding.value;
+    }
+    if (node.kind === "UnaryExpr") {
+      const operand = foldIntegerValue(node.operand);
+      if (operand === null) return null;
+      return node.operator === "-" ? -operand : operand;
+    }
+    const left = foldIntegerValue(node.left);
+    if (left === null) return null;
+    const right = foldIntegerValue(node.right);
+    if (right === null) return null;
+    if (node.operator === "+") return left + right;
+    if (node.operator === "-") return left - right;
+    return left * right;
+  };
+
+  const foldExpression = (node: ExpressionNode): Value | null => {
+    switch (node.kind) {
+      case "StringLiteral":
+        return node.value;
+      case "BooleanLiteral":
+        return node.value;
+      case "IntegerLiteral":
+        return node.value;
+      case "Identifier": {
+        const binding = lookupSymbol(node.name);
+        if (binding === undefined) {
+          throw new CompilerError(`Unknown identifier: ${node.name}`);
+        }
+        if (binding.kind !== "const") return null;
+        return binding.value;
+      }
+      case "UnaryExpr":
+      case "BinaryExpr":
+        return foldIntegerValue(node);
+      case "ComparisonExpr": {
+        const leftType = typeOfExpression(node.left);
+        const rightType = typeOfExpression(node.right);
+        if (leftType !== rightType) {
+          throw new CompilerError(
+            `Cannot compare ${leftType} with ${rightType}`,
+          );
+        }
+        const left = foldExpression(node.left);
+        if (left === null) return null;
+        const right = foldExpression(node.right);
+        if (right === null) return null;
+        return node.operator === "==" ? left === right : left !== right;
+      }
+      case "NotExpr": {
+        const operand = foldExpression(node.operand);
+        if (operand === null) return null;
+        if (typeof operand === "string") {
+          throw new CompilerError("Cannot negate a string");
+        }
+        if (typeof operand === "number") {
+          throw new CompilerError("Cannot negate an integer");
+        }
+        return !operand;
+      }
+    }
+  };
+
+  const emitIntegerTree = (node: IntegerExprNode) => {
+    const folded = foldIntegerValue(node);
+    if (folded !== null && folded >= -0x80000000 && folded <= 0x7fffffff) {
+      code.movRaxImm32(folded);
+      return;
+    }
+    if (node.kind === "IntegerLiteral") {
+      code.movRaxImm32(node.value);
+      return;
+    }
+    if (node.kind === "Identifier") {
+      const binding = lookupSymbol(node.name);
+      if (binding === undefined) {
+        throw new CompilerError(`Unknown identifier: ${node.name}`);
+      }
+      if (binding.kind === "const") {
+        if (typeof binding.value === "boolean") {
+          throw new CompilerError(
+            `Constant "${node.name}" is a boolean and cannot be used in an integer expression`,
+          );
+        }
+        if (typeof binding.value === "string") {
+          throw new CompilerError(
+            `Constant "${node.name}" is a string and cannot be used in an integer expression`,
+          );
+        }
+        code.movRaxImm32(binding.value);
+        return;
+      }
+      if (binding.type !== "number") {
+        throw new CompilerError(
+          `"${node.name}" is a ${binding.type} and cannot be used in an integer expression`,
+        );
+      }
+      code.movRaxRipRelative(MEMORY_LAYOUT.TEXT_RVA, binding.slotRva);
+      return;
+    }
+    if (node.kind === "UnaryExpr") {
+      emitIntegerTree(node.operand);
+      if (node.operator === "-") code.negRax();
+      return;
+    }
+    emitIntegerTree(node.left);
+    const literal = node.right.kind === "IntegerLiteral" ? node.right : null;
+    if (literal !== null) {
+      if (node.operator === "+") code.addRaxImm32(literal.value);
+      else if (node.operator === "-") code.subRaxImm32(literal.value);
+      else code.imulRaxImm32(literal.value);
+      return;
+    }
+    code.pushRax();
+    emitIntegerTree(node.right);
+    code.popRdx();
+    if (node.operator === "-") code.xchgRaxRdx();
+    if (node.operator === "+") code.addRaxRdx();
+    else if (node.operator === "-") code.subRaxRdx();
+    else code.imulRaxRdx();
+  };
+
+  const emitBooleanIntoRax = (node: ExpressionNode) => {
+    switch (node.kind) {
+      case "BooleanLiteral":
+        code.movRaxImm32(node.value ? 1 : 0);
+        return;
+      case "Identifier": {
+        const binding = lookupSymbol(node.name);
+        if (binding === undefined) {
+          throw new CompilerError(`Unknown identifier: ${node.name}`);
+        }
+        if (binding.kind === "const") {
+          if (typeof binding.value !== "boolean") {
+            throw new CompilerError(`Constant "${node.name}" is not a boolean`);
+          }
+          code.movRaxImm32(binding.value ? 1 : 0);
+          return;
+        }
+        if (binding.type !== "boolean") {
+          throw new CompilerError(`"${node.name}" is not a boolean`);
+        }
+        code.movRaxRipRelative(MEMORY_LAYOUT.TEXT_RVA, binding.slotRva);
+        return;
+      }
+      case "ComparisonExpr":
+        emitOperandIntoRax(node.left);
+        code.pushRax();
+        emitOperandIntoRax(node.right);
+        code.popRdx();
+        code.cmpRaxRdx();
+        if (node.operator === "==") code.seteAl();
+        else code.setneAl();
+        code.movzxRaxAl();
+        return;
+      case "NotExpr":
+        emitBooleanIntoRax(node.operand);
+        code.xorEax1();
+        return;
+    }
+  };
+
+  const emitStringIntoRax = (node: ExpressionNode) => {
+    switch (node.kind) {
+      case "StringLiteral": {
+        const payload = intern(node.value + eolString);
+        code.leaRipRelative(Register.RAX, MEMORY_LAYOUT.TEXT_RVA, payload.rva);
+        code.movRdxImm32(payload.length);
+        return;
+      }
+      case "Identifier": {
+        const binding = lookupSymbol(node.name);
+        if (binding === undefined) {
+          throw new CompilerError(`Unknown identifier: ${node.name}`);
+        }
+        if (binding.kind === "const") {
+          if (typeof binding.value !== "string") {
+            throw new CompilerError(`Constant "${node.name}" is not a string`);
+          }
+          const payload = intern(binding.value + eolString);
+          code.leaRipRelative(
+            Register.RAX,
+            MEMORY_LAYOUT.TEXT_RVA,
+            payload.rva,
+          );
+          code.movRdxImm32(payload.length);
+          return;
+        }
+        if (binding.type !== "string") {
+          throw new CompilerError(`"${node.name}" is not a string`);
+        }
+        code.movRaxRipRelative(MEMORY_LAYOUT.TEXT_RVA, binding.slotRva);
+        code.movRdxRipRelative(MEMORY_LAYOUT.TEXT_RVA, binding.slotRva + 8);
+        return;
+      }
+    }
+  };
+
+  const emitOperandIntoRax = (node: ExpressionNode) => {
+    const type = typeOfExpression(node);
+    if (type === "number") emitIntegerTree(node as IntegerExprNode);
+    else if (type === "boolean") emitBooleanIntoRax(node);
+    else emitStringIntoRax(node);
+  };
+
+  const emitStore = (
+    slotRva: number,
+    type: ValueType,
+    node: ExpressionNode,
+  ) => {
+    if (type === "number") {
+      const folded = foldIntegerValue(node as IntegerExprNode);
+      if (folded !== null && folded >= -0x80000000 && folded <= 0x7fffffff) {
+        code.movRipRelativeImm32(MEMORY_LAYOUT.TEXT_RVA, slotRva, folded);
+        return;
+      }
+      emitIntegerTree(node as IntegerExprNode);
+      code.movRipRelativeRax(MEMORY_LAYOUT.TEXT_RVA, slotRva);
+      return;
+    }
+    if (type === "boolean") {
+      const folded = foldExpression(node);
+      if (folded !== null) {
+        code.movRipRelativeImm32(
+          MEMORY_LAYOUT.TEXT_RVA,
+          slotRva,
+          folded ? 1 : 0,
+        );
+        return;
+      }
+      emitBooleanIntoRax(node);
+      code.movRipRelativeRax(MEMORY_LAYOUT.TEXT_RVA, slotRva);
+      return;
+    }
+    const folded = foldExpression(node);
+    if (folded !== null) {
+      const payload = intern(String(folded) + eolString);
+      code.leaRipRelative(Register.RAX, MEMORY_LAYOUT.TEXT_RVA, payload.rva);
+      code.movRipRelativeRax(MEMORY_LAYOUT.TEXT_RVA, slotRva);
+      code.movRipRelativeImm32(
+        MEMORY_LAYOUT.TEXT_RVA,
+        slotRva + 8,
+        payload.length,
+      );
+      return;
+    }
+    emitStringIntoRax(node);
+    code.movRipRelativeRax(MEMORY_LAYOUT.TEXT_RVA, slotRva);
+    code.movRipRelativeRdx(MEMORY_LAYOUT.TEXT_RVA, slotRva + 8);
+  };
+
+  const emitStringPrint = (payloadRva: number, length: number) => {
+    code.movEcx32(-11);
+    code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_GET_STD_HANDLE);
+    code.movRcxRax();
+    code.leaRipRelative(Register.RDX, MEMORY_LAYOUT.TEXT_RVA, payloadRva);
+    code.movR8d32(length);
+    code.leaRipRelative(
+      Register.R9,
+      MEMORY_LAYOUT.TEXT_RVA,
+      MEMORY_LAYOUT.SCRATCH_BUFFER,
+    );
+    code.movStackParamZero();
+    code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_WRITE_FILE);
+  };
+
+  const emitIntegerPrint = (emitValue: () => void, negative: boolean) => {
+    code.movEcx32(-11);
+    code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_GET_STD_HANDLE);
+    code.movRbxRax();
+    emitValue();
+
+    code.leaRipRelative(
+      Register.RDI,
+      MEMORY_LAYOUT.TEXT_RVA,
+      MEMORY_LAYOUT.SCRATCH_BUFFER + SCRATCH_BUFFER_SIZE,
+    );
+    code.decRdi();
+    code.movByteRdiImm(0x0a);
+    if (eol === "crlf") {
+      code.decRdi();
+      code.movByteRdiImm(0x0d);
+    }
+    code.movR8d32(eol === "lf" ? 1 : 2);
+    if (negative) {
+      code.xorRsiRsi();
+      code.testRaxRax();
+      const skipNeg = code.jnsForward();
+      code.negRax();
+      code.incRsi();
+      code.patchShortJump(skipNeg);
+    }
+    code.movEcx32(10);
+
+    const loopStart = code.length;
+    code.xorEdxEdx();
+    code.divRcx();
+    code.addDlImm(0x30);
+    code.decRdi();
+    code.movByteRdiDl();
+    code.incR8d();
+    code.testRaxRax();
+    code.jnzBackwardTo(loopStart);
+
+    if (negative) {
+      code.testRsiRsi();
+      const done = code.jzForward();
+      code.decRdi();
+      code.movByteRdiImm(0x2d);
+      code.incR8d();
+      code.patchShortJump(done);
+    }
+
+    code.movRcxRbx();
+    code.movRdxRdi();
+    code.leaRipRelative(
+      Register.R9,
+      MEMORY_LAYOUT.TEXT_RVA,
+      MEMORY_LAYOUT.SCRATCH_BUFFER,
+    );
+    code.movStackParamZero();
+    code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_WRITE_FILE);
+  };
+
+  const emitBooleanPrint = () => {
+    code.testRaxRax();
+    const jzFalse = code.jzForward32();
+    const truePayload = intern(`true${eolString}`);
+    emitStringPrint(truePayload.rva, truePayload.length);
+    const jmpDone = code.jmpForward32();
+    code.patchJump32(jzFalse);
+    const falsePayload = intern(`false${eolString}`);
+    emitStringPrint(falsePayload.rva, falsePayload.length);
+    code.patchJump32(jmpDone);
+  };
+
+  const emitStringPtrPrint = (emitLoad: () => void) => {
+    code.movEcx32(-11);
+    code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_GET_STD_HANDLE);
+    code.movRcxRax();
+    emitLoad();
+    code.movRbxRax();
+    code.movR8Rdx();
+    code.movRdxRbx();
+    code.leaRipRelative(
+      Register.R9,
+      MEMORY_LAYOUT.TEXT_RVA,
+      MEMORY_LAYOUT.SCRATCH_BUFFER,
+    );
+    code.movStackParamZero();
+    code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_WRITE_FILE);
+  };
+
+  const emitPrint = (statement: PrintStatementNode) => {
+    const argument = statement.argument;
+    if (argument === undefined) {
+      const payload = intern(eolString);
+      emitStringPrint(payload.rva, payload.length);
+      return;
+    }
+    const folded = foldExpression(argument);
+    if (folded !== null && typeof folded === "number") {
+      const inRange = folded >= -0x80000000 && folded <= 0x7fffffff;
+      emitIntegerPrint(() => {
+        if (inRange) code.movRaxImm32(folded);
+        else emitIntegerTree(argument as IntegerExprNode);
+      }, folded < 0);
+      return;
+    }
+    if (folded !== null && typeof folded === "boolean") {
+      const text = (folded ? "true" : "false") + eolString;
+      const payload = intern(text);
+      emitStringPrint(payload.rva, payload.length);
+      return;
+    }
+    if (folded !== null) {
+      const payload = intern(folded + eolString);
+      emitStringPrint(payload.rva, payload.length);
+      return;
+    }
+    const type = typeOfExpression(argument);
+    if (type === "number") {
+      emitIntegerPrint(
+        () => emitIntegerTree(argument as IntegerExprNode),
+        true,
+      );
+      return;
+    }
+    if (type === "boolean") {
+      emitBooleanIntoRax(argument);
+      emitBooleanPrint();
+      return;
+    }
+    emitStringPtrPrint(() => emitStringIntoRax(argument));
+  };
+
+  const emitBlock = (block: BlockStatementNode) => {
+    scopes.push(new Map());
+    emitStatements(block.body);
+    scopes.pop();
+  };
+
+  const emitElseBranch = (
+    branch: BlockStatementNode | IfStatementNode | undefined,
+  ) => {
+    if (branch === undefined) return;
+    if (branch.kind === "BlockStatement") emitBlock(branch);
+    else emitIf(branch);
+  };
+
+  const emitIf = (statement: IfStatementNode) => {
+    const folded = foldExpression(statement.condition);
+    if (folded !== null) {
+      if (typeof folded !== "boolean") {
+        throw new CompilerError("An if condition must be a boolean");
+      }
+      if (folded === true) {
+        emitBlock(statement.thenBlock);
+      } else {
+        emitElseBranch(statement.elseBranch);
+      }
+      return;
+    }
+    if (typeOfExpression(statement.condition) !== "boolean") {
+      throw new CompilerError("An if condition must be a boolean");
+    }
+    emitBooleanIntoRax(statement.condition);
+    code.testRaxRax();
+    const jzElse = code.jzForward32();
+    emitBlock(statement.thenBlock);
+    const jmpEnd = code.jmpForward32();
+    code.patchJump32(jzElse);
+    emitElseBranch(statement.elseBranch);
+    code.patchJump32(jmpEnd);
+  };
+
+  const handleDecl = (
+    name: string,
+    value: ExpressionNode,
+    kind: "ConstDecl" | "RuntimeDecl" | "LetDecl",
+  ) => {
+    const scope = scopes[scopes.length - 1];
+    if (scope === undefined) {
+      throw new CompilerError("Internal error: empty scope stack");
+    }
+    if (lookupSymbol(name) !== undefined) {
+      throw new CompilerError(`"${name}" is already defined`);
+    }
+    if (kind === "ConstDecl") {
+      const folded = foldExpression(value);
+      if (folded === null) {
+        throw new CompilerError(
+          `const "${name}" must be initialized with a compile-time constant`,
+        );
+      }
+      scope.set(name, { kind: "const", value: folded });
+      return;
+    }
+    if (kind === "RuntimeDecl") {
+      const folded = foldExpression(value);
+      if (folded !== null) {
+        scope.set(name, { kind: "const", value: folded });
+        return;
+      }
+      const type = typeOfExpression(value);
+      const slotRva = allocateSlot(type === "string" ? 16 : 8);
+      scope.set(name, { kind: "runtime", type, slotRva });
+      emitStore(slotRva, type, value);
+      return;
+    }
+    const type = typeOfExpression(value);
+    const slotRva = allocateSlot(type === "string" ? 16 : 8);
+    scope.set(name, { kind: "mutable", type, slotRva });
+    emitStore(slotRva, type, value);
+  };
+
+  const handleReassign = (name: string, value: ExpressionNode) => {
+    const binding = lookupSymbol(name);
+    if (binding === undefined) {
+      throw new CompilerError(`Unknown identifier: ${name}`);
+    }
+    if (binding.kind !== "mutable") {
+      throw new CompilerError(`Cannot reassign "${name}"`);
+    }
+    const type = typeOfExpression(value);
+    if (type !== binding.type) {
+      throw new CompilerError(
+        `Cannot assign a ${type} to "${name}" which is a ${binding.type}`,
+      );
+    }
+    emitStore(binding.slotRva, binding.type, value);
+  };
+
+  const emitStatements = (statements: ASTNode[]) => {
+    for (const statement of statements) {
+      switch (statement.kind) {
+        case "ConstDecl":
+        case "RuntimeDecl":
+        case "LetDecl":
+          handleDecl(statement.name, statement.value, statement.kind);
+          break;
+        case "Reassign":
+          handleReassign(statement.name, statement.value);
+          break;
+        case "PrintStatement":
+          emitPrint(statement);
+          break;
+        case "BlockStatement":
+          emitBlock(statement);
+          break;
+        case "IfStatement":
+          emitIf(statement);
+          break;
+        case "ExpressionStatement":
+          foldExpression(statement.argument);
+          break;
+      }
+    }
+  };
+
+  emitStatements(ast);
+
   code.xorEcxEcx();
   code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_EXIT_PROCESS);
 
-  const pe = new PEBuilder(4096);
+  const rdataEnd = Math.max(nextSlotRva, nextPayloadRva);
+  const dataSize = Math.max(0x200, rdataEnd - MEMORY_LAYOUT.RDATA_RVA);
+
+  const pe = new PEBuilder(8192);
   pe.writeHeaders(
     0x200,
-    0x200,
+    dataSize,
     MEMORY_LAYOUT.TEXT_RVA,
     MEMORY_LAYOUT.RDATA_RVA,
   );
@@ -304,231 +766,12 @@ export function compileSourceToBytes(
 
   // String Payloads @ RVA 0x20B0+
   pe.seek(MEMORY_LAYOUT.RDATA_FILE_OFFSET + 0xb0);
-  for (const { bytes } of stringPayloads) {
+  const sortedPayloads = [...payloads.values()].sort((a, b) => a.rva - b.rva);
+  for (const { bytes } of sortedPayloads) {
     pe.writeBytes(bytes);
   }
 
   pe.padToAlignment(0x200);
 
   return pe.TrimmedBuffer;
-}
-
-function compileStringPrint(
-  code: CodeBuilder,
-  payloadRva: number,
-  length: number,
-) {
-  // 1. GetStdHandle(-11)
-  code.movEcx32(-11);
-  code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_GET_STD_HANDLE);
-
-  // 2. WriteFile(handle, buffer, length, &bytesWritten, NULL)
-  code.movRcxRax();
-  code.leaRipRelative(Register.RDX, MEMORY_LAYOUT.TEXT_RVA, payloadRva);
-  code.movR8d32(length);
-  code.leaRipRelative(
-    Register.R9,
-    MEMORY_LAYOUT.TEXT_RVA,
-    MEMORY_LAYOUT.SCRATCH_BUFFER,
-  );
-  code.movStackParamZero();
-  code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_WRITE_FILE);
-}
-
-function compileIntegerPrint(
-  code: CodeBuilder,
-  node: ResolvedIntegerExpr,
-  eol: Eol,
-) {
-  const folded = foldIntegerExpr(node);
-  const negative = folded !== null ? folded < 0 : mayBeNegative(node);
-
-  // 1. GetStdHandle(-11) -> rbx
-  code.movEcx32(-11);
-  code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_GET_STD_HANDLE);
-  code.movRbxRax();
-
-  // 2. Evaluate expression -> rax
-  compileIntegerExpression(code, node);
-
-  // 3. Convert rax to decimal digits in the scratch buffer.
-  //    On exit: rdi = first digit, r8d = length (sign + digits + EOL)
-  code.leaRipRelative(
-    Register.RDI,
-    MEMORY_LAYOUT.TEXT_RVA,
-    MEMORY_LAYOUT.SCRATCH_BUFFER + SCRATCH_BUFFER_SIZE,
-  );
-  code.decRdi();
-  code.movByteRdiImm(0x0a);
-  if (eol === "crlf") {
-    code.decRdi();
-    code.movByteRdiImm(0x0d);
-  }
-  code.movR8d32(eol === "lf" ? 1 : 2);
-  if (negative) {
-    // If rax is negative, negate it and remember the sign in rsi.
-    code.xorRsiRsi();
-    code.testRaxRax();
-    const skipNeg = code.jnsForward();
-    code.negRax();
-    code.incRsi();
-    code.patchShortJump(skipNeg);
-  }
-  code.movEcx32(10);
-
-  const loopStart = code.length;
-  code.xorEdxEdx();
-  code.divRcx();
-  code.addDlImm(0x30);
-  code.decRdi();
-  code.movByteRdiDl();
-  code.incR8d();
-  code.testRaxRax();
-  code.jnzBackwardTo(loopStart);
-
-  if (negative) {
-    // Prepend '-' if the value was negative.
-    code.testRsiRsi();
-    const done = code.jzForward();
-    code.decRdi();
-    code.movByteRdiImm(0x2d);
-    code.incR8d();
-    code.patchShortJump(done);
-  }
-
-  // 4. WriteFile(rbx, rdi, r8d, &bytesWritten, NULL)
-  code.movRcxRbx();
-  code.movRdxRdi();
-  code.leaRipRelative(
-    Register.R9,
-    MEMORY_LAYOUT.TEXT_RVA,
-    MEMORY_LAYOUT.SCRATCH_BUFFER,
-  );
-  code.movStackParamZero();
-  code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_WRITE_FILE);
-}
-
-function mayBeNegative(node: ResolvedIntegerExpr): boolean {
-  if (node.kind === "IntegerLiteral") return node.value < 0;
-  if (node.kind === "UnaryExpr") return true;
-  return (
-    node.operator === "-" ||
-    mayBeNegative(node.left) ||
-    mayBeNegative(node.right)
-  );
-}
-
-function isIntegerLiteral(
-  node: ResolvedIntegerExpr,
-): node is IntegerLiteralNode {
-  return node.kind === "IntegerLiteral";
-}
-
-function lookupSymbol(
-  scopes: Map<string, number | boolean | string>[],
-  name: string,
-): number | boolean | string | undefined {
-  for (let i = scopes.length - 1; i >= 0; i--) {
-    const scope = scopes[i];
-    if (scope === undefined) continue;
-    const value = scope.get(name);
-    if (value !== undefined) return value;
-  }
-  return undefined;
-}
-
-function resolveIntegerExpr(
-  node: IntegerExprNode,
-  scopes: Map<string, number | boolean | string>[],
-): ResolvedIntegerExpr {
-  if (node.kind === "Identifier") {
-    const value = lookupSymbol(scopes, node.name);
-    if (value === undefined) {
-      throw new CompilerError(`Unknown identifier: ${node.name}`);
-    }
-    if (typeof value === "boolean") {
-      throw new CompilerError(
-        `Constant "${node.name}" is a boolean and cannot be used in an integer expression`,
-      );
-    }
-    if (typeof value === "string") {
-      throw new CompilerError(
-        `Constant "${node.name}" is a string and cannot be used in an integer expression`,
-      );
-    }
-    return { kind: "IntegerLiteral", value };
-  }
-  if (node.kind === "IntegerLiteral") return node;
-  if (node.kind === "UnaryExpr") {
-    return {
-      kind: "UnaryExpr",
-      operator: node.operator,
-      operand: resolveIntegerExpr(node.operand, scopes),
-    };
-  }
-  return {
-    kind: "BinaryExpr",
-    operator: node.operator,
-    left: resolveIntegerExpr(node.left, scopes),
-    right: resolveIntegerExpr(node.right, scopes),
-  };
-}
-
-function evalIntegerExpr(node: ResolvedIntegerExpr): number {
-  if (node.kind === "IntegerLiteral") return node.value;
-  if (node.kind === "UnaryExpr") {
-    const operand = evalIntegerExpr(node.operand);
-    return node.operator === "-" ? -operand : operand;
-  }
-  const left = evalIntegerExpr(node.left);
-  const right = evalIntegerExpr(node.right);
-  if (node.operator === "+") return left + right;
-  if (node.operator === "-") return left - right;
-  return left * right;
-}
-
-function foldIntegerExpr(node: ResolvedIntegerExpr): number | null {
-  const value = evalIntegerExpr(node);
-  return value >= -0x80000000 && value <= 0x7fffffff ? value : null;
-}
-
-function compileIntegerExpression(
-  code: CodeBuilder,
-  node: ResolvedIntegerExpr,
-) {
-  const folded = foldIntegerExpr(node);
-  if (folded !== null) {
-    code.movRaxImm32(folded);
-    return;
-  }
-  if (node.kind === "IntegerLiteral") {
-    code.movRaxImm32(node.value);
-    return;
-  }
-
-  if (node.kind === "UnaryExpr") {
-    compileIntegerExpression(code, node.operand);
-    if (node.operator === "-") {
-      code.negRax();
-    }
-    return;
-  }
-
-  compileIntegerExpression(code, node.left);
-  const literal = isIntegerLiteral(node.right) ? node.right : null;
-  if (literal !== null) {
-    if (node.operator === "+") code.addRaxImm32(literal.value);
-    else if (node.operator === "-") code.subRaxImm32(literal.value);
-    else code.imulRaxImm32(literal.value);
-    return;
-  }
-  code.pushRax();
-  compileIntegerExpression(code, node.right);
-  code.popRdx();
-  if (node.operator === "-") {
-    code.xchgRaxRdx();
-  }
-  if (node.operator === "+") code.addRaxRdx();
-  else if (node.operator === "-") code.subRaxRdx();
-  else code.imulRaxRdx();
 }
