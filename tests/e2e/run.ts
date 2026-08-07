@@ -59,4 +59,7 @@ console.log(`Ran ${binaries.length} binaries from ${binDir}.`);
 if (failures > 0) {
   console.error(`${failures} case(s) failed.`);
   process.exit(1);
+} else {
+  console.error(`All ${binaries.length} case(s) passed.`);
+  process.exit(0);
 }
