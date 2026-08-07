@@ -1,17 +1,17 @@
 import { CompilerError } from "./errors";
 import type { Token, TokenType } from "./lexer";
 
-export interface StringLiteralNode {
+interface StringLiteralNode {
   kind: "StringLiteral";
   value: string;
 }
 
-export interface BooleanLiteralNode {
+interface BooleanLiteralNode {
   kind: "BooleanLiteral";
   value: boolean;
 }
 
-export interface IntegerLiteralNode {
+interface IntegerLiteralNode {
   kind: "IntegerLiteral";
   value: number;
 }
@@ -59,7 +59,7 @@ export type ExpressionNode =
   | ComparisonExprNode
   | NotExprNode;
 
-interface PrintStatementNode {
+export interface PrintStatementNode {
   kind: "PrintStatement";
   argument?: ExpressionNode;
 }
@@ -75,12 +75,30 @@ interface ConstDeclNode {
   value: ExpressionNode;
 }
 
-interface BlockStatementNode {
+interface RuntimeDeclNode {
+  kind: "RuntimeDecl";
+  name: string;
+  value: ExpressionNode;
+}
+
+interface LetDeclNode {
+  kind: "LetDecl";
+  name: string;
+  value: ExpressionNode;
+}
+
+interface ReassignNode {
+  kind: "Reassign";
+  name: string;
+  value: ExpressionNode;
+}
+
+export interface BlockStatementNode {
   kind: "BlockStatement";
   body: ASTNode[];
 }
 
-interface IfStatementNode {
+export interface IfStatementNode {
   kind: "IfStatement";
   condition: ExpressionNode;
   thenBlock: BlockStatementNode;
@@ -91,6 +109,9 @@ export type ASTNode =
   | PrintStatementNode
   | ExpressionStatementNode
   | ConstDeclNode
+  | RuntimeDeclNode
+  | LetDeclNode
+  | ReassignNode
   | BlockStatementNode
   | IfStatementNode;
 
@@ -133,16 +154,41 @@ function parseStatement(state: ParserState): ASTNode {
   if (peek(state).type === "IF") {
     return parseIfStatement(state);
   }
+  if (peek(state).type === "CONST") {
+    return parseVariableDecl(state, "ConstDecl");
+  }
+  if (peek(state).type === "LET") {
+    return parseVariableDecl(state, "LetDecl");
+  }
   if (peek(state).type === "IDENT" && peekNext(state)?.type === "EQUAL") {
-    const nameToken = consume(state, "IDENT");
-    consume(state, "EQUAL");
-    const value = parseExpression(state);
-    return { kind: "ConstDecl", name: nameToken.value, value };
+    return parseVariableDecl(state, "RuntimeDecl");
+  }
+  if (peek(state).type === "IDENT" && peekNext(state)?.type === "COLONEQUAL") {
+    return parseVariableDecl(state, "Reassign");
   }
   return {
     kind: "ExpressionStatement",
     argument: parseExpression(state),
   };
+}
+
+function parseVariableDecl(
+  state: ParserState,
+  kind: "ConstDecl" | "RuntimeDecl" | "LetDecl" | "Reassign",
+): ConstDeclNode | RuntimeDeclNode | LetDeclNode | ReassignNode {
+  const isReassign = kind === "Reassign";
+  if (isReassign) {
+    const nameToken = consume(state, "IDENT");
+    consume(state, "COLONEQUAL");
+    const value = parseExpression(state);
+    return { kind, name: nameToken.value, value };
+  }
+  if (kind === "ConstDecl") consume(state, "CONST");
+  if (kind === "LetDecl") consume(state, "LET");
+  const nameToken = consume(state, "IDENT");
+  consume(state, "EQUAL");
+  const value = parseExpression(state);
+  return { kind, name: nameToken.value, value };
 }
 
 function parseBlock(state: ParserState): BlockStatementNode {

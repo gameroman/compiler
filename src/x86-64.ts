@@ -51,6 +51,11 @@ export class CodeBuilder {
     this.push32(value);
   }
 
+  movRdxImm32(value: number) {
+    this.bytes.push(0x48, 0xc7, 0xc2);
+    this.push32(value);
+  }
+
   addRaxImm32(value: number) {
     this.bytes.push(0x48, 0x05);
     this.push32(value);
@@ -176,7 +181,9 @@ export class CodeBuilder {
     const ripAtNextInstruction = textSectionRva + instructionOffset + 7;
     const displacement = targetRva - ripAtNextInstruction;
 
-    if (reg === Register.RDX) {
+    if (reg === Register.RAX) {
+      this.bytes.push(0x48, 0x8d, 0x05);
+    } else if (reg === Register.RDX) {
       this.bytes.push(0x48, 0x8d, 0x15);
     } else if (reg === Register.R9) {
       this.bytes.push(0x4c, 0x8d, 0x0d);
@@ -193,6 +200,133 @@ export class CodeBuilder {
 
     this.bytes.push(0xff, 0x15);
     this.push32(displacement);
+  }
+
+  private ripRelativeDisplacement(
+    textSectionRva: number,
+    targetRva: number,
+    instructionLength: number,
+  ) {
+    const ripAtNextInstruction =
+      textSectionRva + this.length + instructionLength;
+    return targetRva - ripAtNextInstruction;
+  }
+
+  movRaxRipRelative(textSectionRva: number, targetRva: number) {
+    const displacement = this.ripRelativeDisplacement(
+      textSectionRva,
+      targetRva,
+      7,
+    );
+    this.bytes.push(0x48, 0x8b, 0x05);
+    this.push32(displacement);
+  }
+
+  movRdxRipRelative(textSectionRva: number, targetRva: number) {
+    const displacement = this.ripRelativeDisplacement(
+      textSectionRva,
+      targetRva,
+      7,
+    );
+    this.bytes.push(0x48, 0x8b, 0x15);
+    this.push32(displacement);
+  }
+
+  movR8RipRelative(textSectionRva: number, targetRva: number) {
+    const displacement = this.ripRelativeDisplacement(
+      textSectionRva,
+      targetRva,
+      7,
+    );
+    this.bytes.push(0x4c, 0x8b, 0x05);
+    this.push32(displacement);
+  }
+
+  movRipRelativeRax(textSectionRva: number, targetRva: number) {
+    const displacement = this.ripRelativeDisplacement(
+      textSectionRva,
+      targetRva,
+      7,
+    );
+    this.bytes.push(0x48, 0x89, 0x05);
+    this.push32(displacement);
+  }
+
+  movRipRelativeRdx(textSectionRva: number, targetRva: number) {
+    const displacement = this.ripRelativeDisplacement(
+      textSectionRva,
+      targetRva,
+      7,
+    );
+    this.bytes.push(0x48, 0x89, 0x15);
+    this.push32(displacement);
+  }
+
+  movRipRelativeImm32(
+    textSectionRva: number,
+    targetRva: number,
+    value: number,
+  ) {
+    const displacement = this.ripRelativeDisplacement(
+      textSectionRva,
+      targetRva,
+      11,
+    );
+    this.bytes.push(0x48, 0xc7, 0x05);
+    this.push32(displacement);
+    this.push32(value);
+  }
+
+  movRdxRbx() {
+    this.bytes.push(0x48, 0x89, 0xda);
+  }
+
+  movR8Rdx() {
+    this.bytes.push(0x49, 0x89, 0xd0);
+  }
+
+  cmpRaxRdx() {
+    this.bytes.push(0x48, 0x39, 0xd0);
+  }
+
+  seteAl() {
+    this.bytes.push(0x0f, 0x94, 0xc0);
+  }
+
+  setneAl() {
+    this.bytes.push(0x0f, 0x95, 0xc0);
+  }
+
+  movzxRaxAl() {
+    this.bytes.push(0x48, 0x0f, 0xb6, 0xc0);
+  }
+
+  xorEax1() {
+    this.bytes.push(0x83, 0xf0, 0x01);
+  }
+
+  jzForward32() {
+    this.bytes.push(0x0f, 0x84, 0, 0, 0, 0);
+    return this.length - 4;
+  }
+
+  jnzForward32() {
+    this.bytes.push(0x0f, 0x85, 0, 0, 0, 0);
+    return this.length - 4;
+  }
+
+  jmpForward32() {
+    this.bytes.push(0xe9, 0, 0, 0, 0);
+    return this.length - 4;
+  }
+
+  patchJump32(displacementByteIndex: number) {
+    const targetLength = this.length;
+    const displacement = targetLength - (displacementByteIndex + 4);
+    this.bytes[displacementByteIndex] = displacement & 0xff;
+    this.bytes[displacementByteIndex + 1] = (displacement >> 8) & 0xff;
+    this.bytes[displacementByteIndex + 2] = (displacement >> 16) & 0xff;
+    this.bytes[displacementByteIndex + 3] = (displacement >> 24) & 0xff;
   }
 
   private push32(val: number) {
