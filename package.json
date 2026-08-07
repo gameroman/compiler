@@ -10,7 +10,10 @@
     "lint": "oxlint",
     "format": "oxfmt",
     "build": "bun run ./src/cli.ts examples/hello.txt dist/output.exe",
-    "start": "./dist/output"
+    "build:linux": "bun run ./src/cli.ts examples/hello.txt dist/output --target linux-x86-64",
+    "start": "./dist/output",
+    "e2e:compile": "bun run ./tests/e2e/compile.ts",
+    "e2e:run": "bun run ./tests/e2e/run.ts"
   },
   "devDependencies": {
     "@gameroman/config": "0.2.8",

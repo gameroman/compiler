@@ -1,15 +1,6 @@
-import { afterAll, describe, expect, it } from "bun:test";
+import { describe, it } from "bun:test";
 
-import {
-  cleanupCreatedFiles,
-  compileSource,
-  expectCompileError,
-  expectCompilesTo,
-  fingerprint,
-  runAndExpect,
-} from "./helpers";
-
-afterAll(cleanupCreatedFiles);
+import { expectCompileError, expectCompilesTo } from "./helpers";
 
 describe("compileSourceToExecutable", () => {
   it("rejects redefining an already-defined constant", () => {
@@ -30,18 +21,6 @@ describe("compileSourceToExecutable", () => {
 
   it("rejects a string inside an addition operand", () => {
     expectCompileError('print((1) + ("hi"))');
-  });
-
-  it("compiles a bare semicolon as an empty program", () => {
-    const outputFile = compileSource(";");
-
-    runAndExpect(outputFile, "");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"08db888a9aa76055731ce8227c2bce5bee9d1c8b2c1fbe53efe3a027c57fd662"`,
-    );
   });
 
   it("compiles a bare string expression statement", () => {
@@ -70,30 +49,6 @@ describe("compileSourceToExecutable", () => {
 
   it("rejects a semicolon inside print parentheses", () => {
     expectCompileError("print(;)");
-  });
-
-  it("prints a newline for an empty print", () => {
-    const outputFile = compileSource("print()");
-
-    runAndExpect(outputFile, "\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"9a7bb965268a3497064d969469bd7bbee644a3957a1a3023920e6cbb0ac0a790"`,
-    );
-  });
-
-  it("prints a newline for an empty print with lf eol", () => {
-    const outputFile = compileSource("print()", { eol: "lf" });
-
-    runAndExpect(outputFile, "\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"d9415ac4b252274b9ccf8489470f365502414d29d988485cd0e6bc5c1bccf2b4"`,
-    );
   });
 
   it("rejects a trailing plus", () => {

@@ -1,5 +1,4 @@
 import { expect } from "bun:test";
-import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -27,7 +26,11 @@ export function compileSource(
 const byteCache = new Map<string, Uint8Array>();
 
 function referenceBinary(source: string, options?: CompileOptions): Uint8Array {
-  const key = JSON.stringify([source, options?.eol ?? "crlf"]);
+  const key = JSON.stringify([
+    source,
+    options?.eol ?? "crlf",
+    options?.target ?? "windows-x86-64",
+  ]);
   const cached = byteCache.get(key);
   if (cached !== undefined) return cached;
   const bytes = compileSourceToBytes(source, options);
@@ -61,10 +64,4 @@ export function fingerprint(file: string) {
     size: binary.byteLength,
     hash: createHash("sha256").update(binary).digest("hex"),
   };
-}
-
-export function runAndExpect(outputFile: string, expectedStdout: string) {
-  const result = spawnSync(outputFile, [], { encoding: "utf8" });
-  expect(result.status).toBe(0);
-  expect(result.stdout).toBe(expectedStdout);
 }

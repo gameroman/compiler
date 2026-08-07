@@ -1,41 +1,8 @@
-import { afterAll, describe, expect, it } from "bun:test";
+import { describe, it } from "bun:test";
 
-import {
-  cleanupCreatedFiles,
-  compileSource,
-  expectCompileError,
-  expectCompilesTo,
-  fingerprint,
-  runAndExpect,
-} from "./helpers";
-
-afterAll(cleanupCreatedFiles);
+import { expectCompileError, expectCompilesTo } from "./helpers";
 
 describe("compileSourceToExecutable", () => {
-  it("prints true", () => {
-    const outputFile = compileSource("print(true)");
-
-    runAndExpect(outputFile, "true\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"72b2a8ffef50f0534c45bc0df5a2d7a19625841c11f012433e8f99de6d5542f7"`,
-    );
-  });
-
-  it("prints false", () => {
-    const outputFile = compileSource("print(false)");
-
-    runAndExpect(outputFile, "false\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"41f3343152b3fbb27ec08c5e8787bb1e2f8f09e1c82a45f1835985d18a4e1272"`,
-    );
-  });
-
   it("prints a parenthesized boolean", () => {
     expectCompilesTo("print((true))", "print(true)");
   });
@@ -60,18 +27,6 @@ describe("compileSourceToExecutable", () => {
     expectCompilesTo('print("true")', "print(true)");
   });
 
-  it("compiles a bare boolean expression statement as an empty program", () => {
-    const outputFile = compileSource("true;");
-
-    runAndExpect(outputFile, "");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"08db888a9aa76055731ce8227c2bce5bee9d1c8b2c1fbe53efe3a027c57fd662"`,
-    );
-  });
-
   it("rejects using a boolean constant in an integer expression", () => {
     expectCompileError("FLAG = true; print(FLAG + 1)");
   });
@@ -86,18 +41,6 @@ describe("compileSourceToExecutable", () => {
 
   it("rejects an integer expression in a boolean print", () => {
     expectCompileError("print(true + 1)");
-  });
-
-  it("prints a string constant", () => {
-    const outputFile = compileSource('s = "hi"; print(s)');
-
-    runAndExpect(outputFile, "hi\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"f6fa5e623c0cdd84569cc6fc50bc168f431b515dff32da69a85f580d32d20149"`,
-    );
   });
 
   it("lets a string constant reference an earlier string constant", () => {
@@ -118,18 +61,6 @@ describe("compileSourceToExecutable", () => {
 
   it("rejects using a string constant in an integer constant", () => {
     expectCompileError('s = "hi"; t = s + 1; print(t)');
-  });
-
-  it("prints a parenthesized integer constant", () => {
-    const outputFile = compileSource("X = (2); print(X)");
-
-    runAndExpect(outputFile, "2\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"776b62395eca59e2e86482b25df16bd58ca279b4cbdf824e71ca49d6f7c0593c"`,
-    );
   });
 
   it("folds a parenthesized integer constant to the same binary as its literal", () => {

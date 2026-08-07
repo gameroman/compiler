@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 
+import { ELFBuilder } from "./elf-builder";
 import { CompilerError } from "./errors";
 import { tokenize } from "./lexer";
 import { parse } from "./parser";
@@ -12,7 +13,11 @@ import type {
   PrintStatementNode,
 } from "./parser";
 import { PEBuilder } from "./pe-builder";
+import { createRuntime, defaultEolForTarget, EOL_STRING } from "./runtime";
+import type { Eol, MemoryLayout, Target } from "./runtime";
 import { CodeBuilder, Register } from "./x86-64";
+
+export type { Eol, Target } from "./runtime";
 
 type ValueType = "number" | "boolean" | "string";
 
@@ -37,34 +42,10 @@ interface MutableBinding {
 
 type Binding = ConstBinding | RuntimeBinding | MutableBinding;
 
-const MEMORY_LAYOUT = {
-  TEXT_RVA: 0x1000,
-  TEXT_FILE_OFFSET: 0x200,
-
-  RDATA_RVA: 0x2000,
-  RDATA_FILE_OFFSET: 0x400,
-
-  IAT_GET_STD_HANDLE: 0x2048,
-  IAT_WRITE_FILE: 0x2050,
-  IAT_EXIT_PROCESS: 0x2058,
-  STRING_PAYLOAD: 0x20b0,
-  SCRATCH_BUFFER: 0x20f0,
-  VAR_START: 0x2110,
-  VAR_END: 0x2800,
-};
-
-const SCRATCH_BUFFER_SIZE = 32;
-
-export type Eol = "crlf" | "lf";
-
 export interface CompileOptions {
   eol?: Eol;
+  target?: Target;
 }
-
-const EOL_STRING: Record<Eol, string> = {
-  crlf: "\r\n",
-  lf: "\n",
-};
 
 export function compileSourceToExecutable(
   sourceCode: string,
@@ -72,13 +53,17 @@ export function compileSourceToExecutable(
   options: CompileOptions = {},
 ) {
   fs.writeFileSync(outputFile, compileSourceToBytes(sourceCode, options));
+  if (process.platform !== "win32") {
+    fs.chmodSync(outputFile, 0o755);
+  }
 }
 
 export function compileSourceToBytes(
   sourceCode: string,
   options: CompileOptions = {},
 ): Uint8Array {
-  const eol = options.eol ?? "crlf";
+  const target = options.target ?? "windows-x86-64";
+  const eol = options.eol ?? defaultEolForTarget(target);
   const eolString = EOL_STRING[eol];
   const tokens = tokenize(sourceCode);
   const ast = parse(tokens);
@@ -86,19 +71,22 @@ export function compileSourceToBytes(
   const code = new CodeBuilder();
   code.subRsp(56);
 
+  const runtime = createRuntime(target, eol, code);
+  const layout: MemoryLayout = runtime.layout;
+
   const encoder = new TextEncoder();
   const payloads = new Map<
     string,
     { rva: number; length: number; bytes: Uint8Array }
   >();
-  let nextPayloadRva = MEMORY_LAYOUT.STRING_PAYLOAD;
+  let nextPayloadRva = layout.stringPayload;
   const intern = (text: string) => {
     const existing = payloads.get(text);
     if (existing !== undefined) {
       return { rva: existing.rva, length: existing.length };
     }
     const bytes = encoder.encode(text);
-    if (nextPayloadRva + bytes.length > MEMORY_LAYOUT.SCRATCH_BUFFER) {
+    if (nextPayloadRva + bytes.length > layout.scratchBuffer) {
       throw new CompilerError("String payloads exceed available .rdata space");
     }
     const rva = nextPayloadRva;
@@ -107,11 +95,11 @@ export function compileSourceToBytes(
     return { rva, length: bytes.length };
   };
 
-  let nextSlotRva = MEMORY_LAYOUT.VAR_START;
+  let nextSlotRva = layout.varStart;
   const allocateSlot = (bytes: number): number => {
     const rva = nextSlotRva;
     nextSlotRva += bytes;
-    if (nextSlotRva > MEMORY_LAYOUT.VAR_END) {
+    if (nextSlotRva > layout.varEnd) {
       throw new CompilerError(
         "Too many variables: .rdata variable space exhausted",
       );
@@ -272,7 +260,7 @@ export function compileSourceToBytes(
           `"${node.name}" is a ${binding.type} and cannot be used in an integer expression`,
         );
       }
-      code.movRaxRipRelative(MEMORY_LAYOUT.TEXT_RVA, binding.slotRva);
+      code.movRaxRipRelative(layout.textRva, binding.slotRva);
       return;
     }
     if (node.kind === "UnaryExpr") {
@@ -317,7 +305,7 @@ export function compileSourceToBytes(
         if (binding.type !== "boolean") {
           throw new CompilerError(`"${node.name}" is not a boolean`);
         }
-        code.movRaxRipRelative(MEMORY_LAYOUT.TEXT_RVA, binding.slotRva);
+        code.movRaxRipRelative(layout.textRva, binding.slotRva);
         return;
       }
       case "ComparisonExpr":
@@ -341,7 +329,7 @@ export function compileSourceToBytes(
     switch (node.kind) {
       case "StringLiteral": {
         const payload = intern(node.value + eolString);
-        code.leaRipRelative(Register.RAX, MEMORY_LAYOUT.TEXT_RVA, payload.rva);
+        code.leaRipRelative(Register.RAX, layout.textRva, payload.rva);
         code.movRdxImm32(payload.length);
         return;
       }
@@ -355,19 +343,15 @@ export function compileSourceToBytes(
             throw new CompilerError(`Constant "${node.name}" is not a string`);
           }
           const payload = intern(binding.value + eolString);
-          code.leaRipRelative(
-            Register.RAX,
-            MEMORY_LAYOUT.TEXT_RVA,
-            payload.rva,
-          );
+          code.leaRipRelative(Register.RAX, layout.textRva, payload.rva);
           code.movRdxImm32(payload.length);
           return;
         }
         if (binding.type !== "string") {
           throw new CompilerError(`"${node.name}" is not a string`);
         }
-        code.movRaxRipRelative(MEMORY_LAYOUT.TEXT_RVA, binding.slotRva);
-        code.movRdxRipRelative(MEMORY_LAYOUT.TEXT_RVA, binding.slotRva + 8);
+        code.movRaxRipRelative(layout.textRva, binding.slotRva);
+        code.movRdxRipRelative(layout.textRva, binding.slotRva + 8);
         return;
       }
     }
@@ -388,115 +372,38 @@ export function compileSourceToBytes(
     if (type === "number") {
       const folded = foldIntegerValue(node as IntegerExprNode);
       if (folded !== null && folded >= -0x80000000 && folded <= 0x7fffffff) {
-        code.movRipRelativeImm32(MEMORY_LAYOUT.TEXT_RVA, slotRva, folded);
+        code.movRipRelativeImm32(layout.textRva, slotRva, folded);
         return;
       }
       emitIntegerTree(node as IntegerExprNode);
-      code.movRipRelativeRax(MEMORY_LAYOUT.TEXT_RVA, slotRva);
+      code.movRipRelativeRax(layout.textRva, slotRva);
       return;
     }
     if (type === "boolean") {
       const folded = foldExpression(node);
       if (folded !== null) {
-        code.movRipRelativeImm32(
-          MEMORY_LAYOUT.TEXT_RVA,
-          slotRva,
-          folded ? 1 : 0,
-        );
+        code.movRipRelativeImm32(layout.textRva, slotRva, folded ? 1 : 0);
         return;
       }
       emitBooleanIntoRax(node);
-      code.movRipRelativeRax(MEMORY_LAYOUT.TEXT_RVA, slotRva);
+      code.movRipRelativeRax(layout.textRva, slotRva);
       return;
     }
     const folded = foldExpression(node);
     if (folded !== null) {
       const payload = intern(String(folded) + eolString);
-      code.leaRipRelative(Register.RAX, MEMORY_LAYOUT.TEXT_RVA, payload.rva);
-      code.movRipRelativeRax(MEMORY_LAYOUT.TEXT_RVA, slotRva);
-      code.movRipRelativeImm32(
-        MEMORY_LAYOUT.TEXT_RVA,
-        slotRva + 8,
-        payload.length,
-      );
+      code.leaRipRelative(Register.RAX, layout.textRva, payload.rva);
+      code.movRipRelativeRax(layout.textRva, slotRva);
+      code.movRipRelativeImm32(layout.textRva, slotRva + 8, payload.length);
       return;
     }
     emitStringIntoRax(node);
-    code.movRipRelativeRax(MEMORY_LAYOUT.TEXT_RVA, slotRva);
-    code.movRipRelativeRdx(MEMORY_LAYOUT.TEXT_RVA, slotRva + 8);
+    code.movRipRelativeRax(layout.textRva, slotRva);
+    code.movRipRelativeRdx(layout.textRva, slotRva + 8);
   };
 
   const emitStringPrint = (payloadRva: number, length: number) => {
-    code.movEcx32(-11);
-    code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_GET_STD_HANDLE);
-    code.movRcxRax();
-    code.leaRipRelative(Register.RDX, MEMORY_LAYOUT.TEXT_RVA, payloadRva);
-    code.movR8d32(length);
-    code.leaRipRelative(
-      Register.R9,
-      MEMORY_LAYOUT.TEXT_RVA,
-      MEMORY_LAYOUT.SCRATCH_BUFFER,
-    );
-    code.movStackParamZero();
-    code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_WRITE_FILE);
-  };
-
-  const emitIntegerPrint = (emitValue: () => void, negative: boolean) => {
-    code.movEcx32(-11);
-    code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_GET_STD_HANDLE);
-    code.movRbxRax();
-    emitValue();
-
-    code.leaRipRelative(
-      Register.RDI,
-      MEMORY_LAYOUT.TEXT_RVA,
-      MEMORY_LAYOUT.SCRATCH_BUFFER + SCRATCH_BUFFER_SIZE,
-    );
-    code.decRdi();
-    code.movByteRdiImm(0x0a);
-    if (eol === "crlf") {
-      code.decRdi();
-      code.movByteRdiImm(0x0d);
-    }
-    code.movR8d32(eol === "lf" ? 1 : 2);
-    if (negative) {
-      code.xorRsiRsi();
-      code.testRaxRax();
-      const skipNeg = code.jnsForward();
-      code.negRax();
-      code.incRsi();
-      code.patchShortJump(skipNeg);
-    }
-    code.movEcx32(10);
-
-    const loopStart = code.length;
-    code.xorEdxEdx();
-    code.divRcx();
-    code.addDlImm(0x30);
-    code.decRdi();
-    code.movByteRdiDl();
-    code.incR8d();
-    code.testRaxRax();
-    code.jnzBackwardTo(loopStart);
-
-    if (negative) {
-      code.testRsiRsi();
-      const done = code.jzForward();
-      code.decRdi();
-      code.movByteRdiImm(0x2d);
-      code.incR8d();
-      code.patchShortJump(done);
-    }
-
-    code.movRcxRbx();
-    code.movRdxRdi();
-    code.leaRipRelative(
-      Register.R9,
-      MEMORY_LAYOUT.TEXT_RVA,
-      MEMORY_LAYOUT.SCRATCH_BUFFER,
-    );
-    code.movStackParamZero();
-    code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_WRITE_FILE);
+    runtime.emitStringPrint(payloadRva, length);
   };
 
   const emitBooleanPrint = () => {
@@ -511,23 +418,6 @@ export function compileSourceToBytes(
     code.patchJump32(jmpDone);
   };
 
-  const emitStringPtrPrint = (emitLoad: () => void) => {
-    code.movEcx32(-11);
-    code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_GET_STD_HANDLE);
-    code.movRcxRax();
-    emitLoad();
-    code.movRbxRax();
-    code.movR8Rdx();
-    code.movRdxRbx();
-    code.leaRipRelative(
-      Register.R9,
-      MEMORY_LAYOUT.TEXT_RVA,
-      MEMORY_LAYOUT.SCRATCH_BUFFER,
-    );
-    code.movStackParamZero();
-    code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_WRITE_FILE);
-  };
-
   const emitPrint = (statement: PrintStatementNode) => {
     const argument = statement.argument;
     if (argument === undefined) {
@@ -538,7 +428,7 @@ export function compileSourceToBytes(
     const folded = foldExpression(argument);
     if (folded !== null && typeof folded === "number") {
       const inRange = folded >= -0x80000000 && folded <= 0x7fffffff;
-      emitIntegerPrint(() => {
+      runtime.emitIntegerPrint(() => {
         if (inRange) code.movRaxImm32(folded);
         else emitIntegerTree(argument as IntegerExprNode);
       }, folded < 0);
@@ -557,7 +447,7 @@ export function compileSourceToBytes(
     }
     const type = typeOfExpression(argument);
     if (type === "number") {
-      emitIntegerPrint(
+      runtime.emitIntegerPrint(
         () => emitIntegerTree(argument as IntegerExprNode),
         true,
       );
@@ -568,7 +458,7 @@ export function compileSourceToBytes(
       emitBooleanPrint();
       return;
     }
-    emitStringPtrPrint(() => emitStringIntoRax(argument));
+    runtime.emitStringPtrPrint(() => emitStringIntoRax(argument));
   };
 
   const emitBlock = (block: BlockStatementNode) => {
@@ -697,34 +587,51 @@ export function compileSourceToBytes(
 
   emitStatements(ast);
 
-  code.xorEcxEcx();
-  code.callImport(MEMORY_LAYOUT.TEXT_RVA, MEMORY_LAYOUT.IAT_EXIT_PROCESS);
+  runtime.emitExit();
 
   const rdataEnd = Math.max(nextSlotRva, nextPayloadRva);
-  const dataSize = Math.max(0x200, rdataEnd - MEMORY_LAYOUT.RDATA_RVA);
+  const dataSize = Math.max(0x200, rdataEnd - layout.rdataRva);
+
+  const payloadOffset =
+    layout.rdataFileOffset + (layout.stringPayload - layout.rdataRva);
+
+  if (target === "linux-x86-64") {
+    const elf = new ELFBuilder(0x8000);
+    elf.writeHeaders(code.length, dataSize);
+
+    elf.seek(layout.textFileOffset);
+    elf.writeBytes(code.bytes);
+    elf.padToAlignment(0x200);
+
+    elf.seek(layout.rdataFileOffset);
+    elf.seek(payloadOffset);
+    const sortedPayloads = [...payloads.values()].sort((a, b) => a.rva - b.rva);
+    for (const { bytes } of sortedPayloads) {
+      elf.writeBytes(bytes);
+    }
+
+    elf.padToAlignment(0x200);
+
+    return elf.TrimmedBuffer;
+  }
 
   const pe = new PEBuilder(8192);
-  pe.writeHeaders(
-    0x200,
-    dataSize,
-    MEMORY_LAYOUT.TEXT_RVA,
-    MEMORY_LAYOUT.RDATA_RVA,
-  );
+  pe.writeHeaders(0x200, dataSize, layout.textRva, layout.rdataRva);
 
   // --- Write .text ---
-  pe.seek(MEMORY_LAYOUT.TEXT_FILE_OFFSET);
+  pe.seek(layout.textFileOffset);
   pe.writeBytes(code.bytes);
   pe.padToAlignment(0x200);
 
   // --- Write .rdata ---
-  pe.seek(MEMORY_LAYOUT.RDATA_FILE_OFFSET);
+  pe.seek(layout.rdataFileOffset);
 
   // Import Directory Descriptor @ 0x2000 (File 0x400)
   pe.writeU32(0x2028); // ILT RVA
   pe.writeU32(0);
   pe.writeU32(0);
   pe.writeU32(0x20a0); // DLL Name RVA ("kernel32.dll")
-  pe.writeU32(MEMORY_LAYOUT.IAT_GET_STD_HANDLE); // IAT RVA (0x2048)
+  pe.writeU32(0x2048); // IAT RVA (0x2048)
 
   // Null Directory Descriptor
   pe.writeU32(0);
@@ -734,38 +641,38 @@ export function compileSourceToBytes(
   pe.writeU32(0);
 
   // ILT @ RVA 0x2028 (File 0x428)
-  pe.seek(MEMORY_LAYOUT.RDATA_FILE_OFFSET + 0x28);
+  pe.seek(layout.rdataFileOffset + 0x28);
   pe.writeU64(0x2070n); // GetStdHandle Name RVA
   pe.writeU64(0x2080n); // WriteFile Name RVA
   pe.writeU64(0x2090n); // ExitProcess Name RVA
   pe.writeU64(0n);
 
   // IAT @ RVA 0x2048 (File 0x448)
-  pe.seek(MEMORY_LAYOUT.RDATA_FILE_OFFSET + 0x48);
+  pe.seek(layout.rdataFileOffset + 0x48);
   pe.writeU64(0x2070n);
   pe.writeU64(0x2080n);
   pe.writeU64(0x2090n);
   pe.writeU64(0n);
 
   // Function Hint/Names @ RVA 0x2070, 0x2080, 0x2090
-  pe.seek(MEMORY_LAYOUT.RDATA_FILE_OFFSET + 0x70);
+  pe.seek(layout.rdataFileOffset + 0x70);
   pe.writeU16(0);
   pe.writeString("GetStdHandle");
 
-  pe.seek(MEMORY_LAYOUT.RDATA_FILE_OFFSET + 0x80);
+  pe.seek(layout.rdataFileOffset + 0x80);
   pe.writeU16(0);
   pe.writeString("WriteFile");
 
-  pe.seek(MEMORY_LAYOUT.RDATA_FILE_OFFSET + 0x90);
+  pe.seek(layout.rdataFileOffset + 0x90);
   pe.writeU16(0);
   pe.writeString("ExitProcess");
 
   // DLL Name @ RVA 0x20A0
-  pe.seek(MEMORY_LAYOUT.RDATA_FILE_OFFSET + 0xa0);
+  pe.seek(layout.rdataFileOffset + 0xa0);
   pe.writeString("kernel32.dll");
 
   // String Payloads @ RVA 0x20B0+
-  pe.seek(MEMORY_LAYOUT.RDATA_FILE_OFFSET + 0xb0);
+  pe.seek(payloadOffset);
   const sortedPayloads = [...payloads.values()].sort((a, b) => a.rva - b.rva);
   for (const { bytes } of sortedPayloads) {
     pe.writeBytes(bytes);
