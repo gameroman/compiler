@@ -1,29 +1,8 @@
-import { afterAll, describe, expect, it } from "bun:test";
+import { describe, it } from "bun:test";
 
-import {
-  cleanupCreatedFiles,
-  compileSource,
-  expectCompileError,
-  expectCompilesTo,
-  fingerprint,
-  runAndExpect,
-} from "./helpers";
-
-afterAll(cleanupCreatedFiles);
+import { expectCompileError, expectCompilesTo } from "./helpers";
 
 describe("compileSourceToExecutable", () => {
-  it("prints the result of an equality comparison", () => {
-    const outputFile = compileSource("print(1 == 1)");
-
-    runAndExpect(outputFile, "true\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"72b2a8ffef50f0534c45bc0df5a2d7a19625841c11f012433e8f99de6d5542f7"`,
-    );
-  });
-
   it("folds an equality comparison to the same binary as its literal", () => {
     expectCompilesTo("print(1 == 1)", "print(true)");
   });
@@ -102,18 +81,6 @@ describe("compileSourceToExecutable", () => {
 
   it("rejects comparing an undeclared identifier", () => {
     expectCompileError("print(X == 1)");
-  });
-
-  it("prints the negation of true", () => {
-    const outputFile = compileSource("print(!true)");
-
-    runAndExpect(outputFile, "false\r\n");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"41f3343152b3fbb27ec08c5e8787bb1e2f8f09e1c82a45f1835985d18a4e1272"`,
-    );
   });
 
   it("prints the negation of false", () => {

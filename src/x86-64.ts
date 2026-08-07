@@ -7,6 +7,7 @@ export const Register = {
   RAX: 0,
   RBX: 3,
   RDI: 7,
+  RSI: 6,
 } as const;
 
 export class CodeBuilder {
@@ -189,6 +190,8 @@ export class CodeBuilder {
       this.bytes.push(0x4c, 0x8d, 0x0d);
     } else if (reg === Register.RDI) {
       this.bytes.push(0x48, 0x8d, 0x3d);
+    } else if (reg === Register.RSI) {
+      this.bytes.push(0x48, 0x8d, 0x35);
     }
     this.push32(displacement);
   }
@@ -336,5 +339,26 @@ export class CodeBuilder {
       (val >> 16) & 0xff,
       (val >> 24) & 0xff,
     );
+  }
+
+  movRdiImm32(value: number) {
+    this.bytes.push(0x48, 0xc7, 0xc7);
+    this.push32(value);
+  }
+
+  movRsiRdi() {
+    this.bytes.push(0x48, 0x89, 0xfe);
+  }
+
+  movRsiRax() {
+    this.bytes.push(0x48, 0x89, 0xc6);
+  }
+
+  movRdxR8() {
+    this.bytes.push(0x49, 0x89, 0xc2);
+  }
+
+  syscall() {
+    this.bytes.push(0x0f, 0x05);
   }
 }
