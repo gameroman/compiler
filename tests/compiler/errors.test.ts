@@ -1,10 +1,10 @@
 import { afterAll, describe, expect, it } from "bun:test";
 
-import { CompilerError } from "#src/errors";
-
 import {
   cleanupCreatedFiles,
   compileSource,
+  expectCompileError,
+  expectCompilesTo,
   fingerprint,
   runAndExpect,
 } from "./helpers";
@@ -13,25 +13,23 @@ afterAll(cleanupCreatedFiles);
 
 describe("compileSourceToExecutable", () => {
   it("rejects redefining an already-defined constant", () => {
-    expect(() => compileSource("X = 1; X = 2; print(X)")).toThrow(
-      CompilerError,
-    );
+    expectCompileError("X = 1; X = 2; print(X)");
   });
 
   it("rejects using an undeclared identifier", () => {
-    expect(() => compileSource("print(X)")).toThrow(CompilerError);
+    expectCompileError("print(X)");
   });
 
   it("rejects a constant value referencing an undeclared identifier", () => {
-    expect(() => compileSource("X = Y; print(X)")).toThrow(CompilerError);
+    expectCompileError("X = Y; print(X)");
   });
 
   it("rejects a missing operand after an operator", () => {
-    expect(() => compileSource("print(1 + *)")).toThrow(CompilerError);
+    expectCompileError("print(1 + *)");
   });
 
   it("rejects a string inside an addition operand", () => {
-    expect(() => compileSource('print((1) + ("hi"))')).toThrow(CompilerError);
+    expectCompileError('print((1) + ("hi"))');
   });
 
   it("compiles a bare semicolon as an empty program", () => {
@@ -47,47 +45,31 @@ describe("compileSourceToExecutable", () => {
   });
 
   it("compiles a bare string expression statement", () => {
-    const outputFile = compileSource('"hello"');
-
-    runAndExpect(outputFile, "");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"08db888a9aa76055731ce8227c2bce5bee9d1c8b2c1fbe53efe3a027c57fd662"`,
-    );
+    expectCompilesTo('"hello"', ";");
   });
 
   it("compiles a bare integer expression statement", () => {
-    const outputFile = compileSource("1 + 2");
-
-    runAndExpect(outputFile, "");
-
-    const { size, hash } = fingerprint(outputFile);
-    expect(size).toMatchInlineSnapshot(`1536`);
-    expect(hash).toMatchInlineSnapshot(
-      `"08db888a9aa76055731ce8227c2bce5bee9d1c8b2c1fbe53efe3a027c57fd662"`,
-    );
+    expectCompilesTo("1 + 2", ";");
   });
 
   it("rejects a string followed by an integer addition", () => {
-    expect(() => compileSource('print("abc" + 123)')).toThrow(CompilerError);
+    expectCompileError('print("abc" + 123)');
   });
 
   it("rejects an integer followed by a string addition", () => {
-    expect(() => compileSource('print(123 + "abc")')).toThrow(CompilerError);
+    expectCompileError('print(123 + "abc")');
   });
 
   it("rejects an unterminated string literal", () => {
-    expect(() => compileSource('"')).toThrow(CompilerError);
+    expectCompileError('"');
   });
 
   it("rejects an unclosed print parenthesis", () => {
-    expect(() => compileSource("print(")).toThrow(CompilerError);
+    expectCompileError("print(");
   });
 
   it("rejects a semicolon inside print parentheses", () => {
-    expect(() => compileSource("print(;)")).toThrow(CompilerError);
+    expectCompileError("print(;)");
   });
 
   it("prints a newline for an empty print", () => {
@@ -115,10 +97,10 @@ describe("compileSourceToExecutable", () => {
   });
 
   it("rejects a trailing plus", () => {
-    expect(() => compileSource("1 +")).toThrow(CompilerError);
+    expectCompileError("1 +");
   });
 
   it("rejects print without parentheses", () => {
-    expect(() => compileSource("print 1")).toThrow(CompilerError);
+    expectCompileError("print 1");
   });
 });

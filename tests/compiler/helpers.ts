@@ -5,8 +5,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { compileSourceToExecutable } from "#src";
+import { compileSourceToBytes, compileSourceToExecutable } from "#src";
 import type { CompileOptions } from "#src";
+import { CompilerError } from "#src/errors";
 
 const createdFiles: string[] = [];
 
@@ -21,6 +22,31 @@ export function compileSource(
   createdFiles.push(outputFile);
   compileSourceToExecutable(source, outputFile, options);
   return outputFile;
+}
+
+const byteCache = new Map<string, Uint8Array>();
+
+function referenceBinary(source: string, options?: CompileOptions): Uint8Array {
+  const key = JSON.stringify([source, options?.eol ?? "crlf"]);
+  const cached = byteCache.get(key);
+  if (cached !== undefined) return cached;
+  const bytes = compileSourceToBytes(source, options);
+  byteCache.set(key, bytes);
+  return bytes;
+}
+
+export function expectCompilesTo(
+  source: string,
+  referenceSource: string,
+  options?: CompileOptions,
+) {
+  expect(compileSourceToBytes(source, options)).toEqual(
+    referenceBinary(referenceSource, options),
+  );
+}
+
+export function expectCompileError(source: string, options?: CompileOptions) {
+  expect(() => compileSourceToBytes(source, options)).toThrow(CompilerError);
 }
 
 export function cleanupCreatedFiles() {
@@ -41,11 +67,4 @@ export function runAndExpect(outputFile: string, expectedStdout: string) {
   const result = spawnSync(outputFile, [], { encoding: "utf8" });
   expect(result.status).toBe(0);
   expect(result.stdout).toBe(expectedStdout);
-}
-
-export function expectSameBinary(a: string, b: string) {
-  const aFingerprint = fingerprint(a);
-  const bFingerprint = fingerprint(b);
-  expect(aFingerprint.size).toBe(bFingerprint.size);
-  expect(aFingerprint.hash).toBe(bFingerprint.hash);
 }
